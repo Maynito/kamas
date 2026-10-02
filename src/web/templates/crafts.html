@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+{% block title %}Crafts · Kamas{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Rentabilité des crafts</h1>
+  </div>
+  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+    <span class="badge badge-success"><span class="confidence-dot" style="background:var(--success)"></span>Mise à jour auto</span>
+    <input id="craft-search" class="text-input" style="width:200px" type="search"
+           placeholder="Rechercher un craft..." value="{{ query }}" />
+    <select id="craft-job" class="text-input" style="width:170px" title="Filtrer par métier">
+      <option value="">Tous les métiers</option>
+      {% for j in jobs %}
+      <option value="{{ j.id }}" {% if job_id is not none and job_id == j.id %}selected{% endif %}>{{ j.name }}</option>
+      {% endfor %}
+    </select>
+    <span class="lvl-filter" title="Niveau de l'objet crafté — glisse les deux curseurs">
+      <span class="item-sub">Niv.</span>
+      <span class="dual-range">
+        <span class="dual-range-ruler" aria-hidden="true">
+          <span class="dual-range-line"></span>
+          <span class="dual-range-fill" id="craft-lvl-fill"></span>
+          {% for lv in range(0, 201, 10) %}
+          <span class="dual-range-tick{% if lv % 100 == 0 %} major{% elif lv % 50 == 0 %} medium{% endif %}" style="left:{{ lv // 2 }}%"></span>
+          {% endfor %}
+        </span>
+        <input id="craft-lvl-min" class="dual-range-input" type="range" min="0" max="200" step="1"
+               value="{% if level_min is not none %}{{ level_min }}{% else %}0{% endif %}" aria-label="Niveau minimum" />
+        <input id="craft-lvl-max" class="dual-range-input" type="range" min="0" max="200" step="1"
+               value="{% if level_max is not none %}{{ level_max }}{% else %}200{% endif %}" aria-label="Niveau maximum" />
+      </span>
+      <span class="item-sub dual-range-label" id="craft-lvl-label"></span>
+    </span>
+  </div>
+</div>
+
+<div class="section-title" id="craft-calculable-title"></div>
+<div class="table-card" id="craft-calculable-table"></div>
+<div id="craft-pager"></div>
+
+<script>
+  let craftQuery = {{ query | tojson }};
+  let craftJob = {{ job_id | tojson }};        // null = tous les métiers
+  let craftLvlMin = {{ level_min | tojson }};  // null = pas de borne basse
+  let craftLvlMax = {{ level_max | tojson }};  // null = pas de borne haute
+  const initialCrafts = {{ crafts | tojson }};
+  // objets déjà engagés ailleurs (badges "déjà en cours") — mis à jour à chaque refresh
+  let atelierSet = new Set({{ in_atelier | tojson }});
+  let forgeSet = new Set({{ in_forge | tojson }});
+  let holdingSet = new Set({{ in_holding | tojson }});
+
+  let lastCraftsData = initialCrafts;
+  // null = ordre par défaut du serveur (bénéfice/mois décroissant, cf. ranking_key)
+  let craftSort = null;
+  const craftPager = KamasPager('craft-pager', 20);
+
+  function formatK(v) {
+    return v === null || v === undefined ? '—' : String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+
+  function deltaHtml(v) {
+    if (v === null || v === undefined) return '—';
+    const cls = v < 0 ? 'delta-negative' : 'delta-positive';
+    const sign = v < 0 ? '-' : '+';
+    return `<span class="${cls}">${sign}${formatK(Math.abs(v))}</span>`;
+  }
+
+  // Pastilles "déjà engagé" : évite de re-crafter un objet déjà préparé / en
+  // forgemagie / en vente.
+  function statusBadges(id) {
+    let b = '';
+    if (atelierSet.has(id)) b += '<a href="/atelier" class="craft-badge craft-badge--atelier" title="Déjà préparé dans l\'Atelier — cliquer pour y aller">🧰</a>';
+    if (forgeSet.has(id)) b += '<a href="/suivis" class="craft-badge craft-badge--forge" title="Déjà en forgemagie (Suivis) — cliquer pour y aller">⚒️</a>';
+    if (holdingSet.has(id)) b += '<a href="/suivis" class="craft-badge craft-badge--holding" title="Déjà en vente / En cours (Suivis) — cliquer pour y aller">🏷️</a>';
+    return b;
+  }
+
+  function compareForSort(a, b, key, dir) {
+    const av = key === 'result_name' ? a[key].toLowerCase() : a[key];
+    const bv = key === 'result_name' ? b[key].toLowerCase() : b[key];
+    const aNull = av === null || av === undefined;
+    const bNull = bv === null || bv === undefined;
+    if (aNull || bNull) return aNull === bNull ? 0 : (aNull ? 1 : -1); // valeurs manquantes toujours en dernier
+    if (typeof av === 'string') return dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    return dir === 'asc' ? av - bv : bv - av;
+  }
+
+  function sortArrow(key) {
+    if (!craftSort || craftSort.key !== key) return '';
+    return craftSort.dir === 'asc' ? ' ▲' : ' ▼';
+  }
+
+  function sortableHeader(label, key, extraClass) {
+    return `<th class="sortable ${extraClass || ''}" onclick="sortCraftsBy('${key}')">${label}${sortArrow(key)}</th>`;
+  }
+
+  function sortCraftsBy(key) {
+    if (craftSort && craftSort.key === key) {
+      craftSort.dir = craftSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      craftSort = { key, dir: key === 'result_name' ? 'asc' : 'desc' };
+    }
+    craftPager.reset();
+    renderCraftsCalculable(lastCraftsData);
+  }
+
+  function renderCraftsCalculable(crafts) {
+    lastCraftsData = crafts;
+    const n = crafts.length;
+    document.getElementById('craft-calculable-title').textContent =
+      `${n} recette${n !== 1 ? 's' : ''} calculable${n !== 1 ? 's' : ''}` + (craftQuery ? ` pour « ${craftQuery} »` : '');
+
+    const el = document.getElementById('craft-calculable-table');
+    if (!crafts.length) {
+      el.innerHTML = craftQuery
+        ? `<div class="empty-state">Aucune recette calculable ne correspond à « ${craftQuery} ».</div>`
+        : `<div class="empty-state">Aucune recette n'est encore calculable — il manque des prix de ressources.<br />Importe des screenshots HDV pour ces ressources, ou attends le prochain passage du watcher.</div>`;
+      return;
+    }
+    // Préserve les quantités "à préparer" en cours de saisie : le tableau se
+    // reconstruit toutes les 2s (auto-refresh) — sans ça un nombre tapé
+    // reviendrait à 1 avant qu'on ait cliqué "+ Préparer".
+    const prevQty = {};
+    document.querySelectorAll('#craft-calculable-table .prep-qty').forEach(function (inp) {
+      const id = inp.getAttribute('data-prep-id');
+      if (id) prevQty[id] = inp.value;
+    });
+    const sorted = craftSort ? crafts.slice().sort((a, b) => compareForSort(a, b, craftSort.key, craftSort.dir)) : crafts;
+    const rows = craftPager.apply(sorted, () => renderCraftsCalculable(lastCraftsData));
+    const pageOffset = craftPager.page() * craftPager.size();
+    el.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th style="width:36px">#</th>
+            ${sortableHeader('Équipement', 'result_name')}
+            ${sortableHeader('Coût de craft', 'craft_cost', 'num')}
+            ${sortableHeader('Vente nette', 'sale_price_net', 'num')}
+            ${sortableHeader('Marge', 'margin', 'num')}
+            ${sortableHeader('Vendus/mois', 'quantity_sold_30j', 'num')}
+            ${sortableHeader('Bénéfice/mois', 'score', 'num')}
+            <th style="text-align:right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((c, i) => `
+          <tr>
+            <td class="item-sub">${pageOffset + i + 1}</td>
+            <td>
+              <div class="craft-name-cell">
+                <a class="item-cell" href="/history?item_id=${c.result_item_id}&category=equipement">
+                  <div class="item-icon"><img src="/icons/${c.result_item_id}.png" alt="" onerror="this.style.display='none'" /></div>
+                  <div class="item-name">${c.result_name}</div>
+                </a>
+                ${statusBadges(c.result_item_id)}
+              </div>
+            </td>
+            <td class="num kamas">${formatK(c.craft_cost)}</td>
+            <td class="num kamas">${formatK(c.sale_price_net)}</td>
+            <td class="num">${deltaHtml(c.margin)}</td>
+            <td class="num">${c.quantity_sold_30j !== null && c.quantity_sold_30j !== undefined ? formatK(c.quantity_sold_30j) : '—'}</td>
+            <td class="num">${deltaHtml(c.score)}</td>
+            <td>
+              <div class="craft-actions">
+                <span class="row-menu">
+                  <button type="button" class="menu-trigger craft-btn" title="Actions" aria-label="Actions">▾</button>
+                  <div class="menu-panel" hidden>
+                    <button type="button" class="menu-item" data-suivre data-item-id="${c.result_item_id}" data-category="equipement" data-price="${Math.round(c.craft_cost)}">Suivre</button>
+                  </div>
+                </span>
+                <span class="craft-prep">
+                  <input class="prep-qty" type="number" min="1" step="1" value="${prevQty[c.result_item_id] || 1}"
+                         data-prep-id="${c.result_item_id}" title="Nombre de crafts à préparer" aria-label="Nombre de crafts" />
+                  <button type="button" class="btn btn-sm btn-primary craft-btn" onclick="atelierPrepare(${c.result_item_id}, 'equipment', this)">+ Préparer</button>
+                </span>
+              </div>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  // ── filtres métier + intervalle de niveau (double curseur) ──────────────
+  const LVL_MAX = 200;
+
+  // Rafraîchit la barre colorée entre les deux pouces + le libellé, et
+  // reporte les valeurs dans les globales craftLvlMin/craftLvlMax. Une borne à
+  // l'extrême (0 en bas, 200 en haut) = "pas de borne" → null, pour garder le
+  // filtre serveur et l'URL propres (identique à l'ancien champ laissé vide).
+  function craftSyncLevels() {
+    const minEl = document.getElementById('craft-lvl-min');
+    const maxEl = document.getElementById('craft-lvl-max');
+    let mn = parseInt(minEl.value, 10);
+    let mx = parseInt(maxEl.value, 10);
+    // les pouces ne se croisent jamais : on pousse celui qui dépasse l'autre
+    if (mn > mx) { if (document.activeElement === minEl) mx = mn; else mn = mx; }
+    minEl.value = mn;
+    maxEl.value = mx;
+
+    const fill = document.getElementById('craft-lvl-fill');
+    fill.style.left = (mn / LVL_MAX * 100) + '%';
+    fill.style.width = ((mx - mn) / LVL_MAX * 100) + '%';
+    document.getElementById('craft-lvl-label').textContent =
+      (mn === 0 && mx === LVL_MAX) ? 'tous' : mn + ' – ' + mx;
+
+    // garde le pouce "min" attrapable même collé au pouce "max" en haut de barre
+    minEl.style.zIndex = (mn >= LVL_MAX - 10) ? 5 : 3;
+
+    craftLvlMin = mn === 0 ? null : mn;
+    craftLvlMax = mx === LVL_MAX ? null : mx;
+  }
+
+  function craftBuildParams() {
+    const p = new URLSearchParams();
+    if (craftQuery) p.set('q', craftQuery);
+    if (craftJob !== null && craftJob !== undefined && craftJob !== '') p.set('job_id', craftJob);
+    if (craftLvlMin !== null && craftLvlMin !== undefined) p.set('level_min', craftLvlMin);
+    if (craftLvlMax !== null && craftLvlMax !== undefined) p.set('level_max', craftLvlMax);
+    return p;
+  }
+
+  function craftApplyFilters() {
+    const searchEl = document.getElementById('craft-search');
+    if (!searchEl) return; // page quittée entre-temps (nav SPA)
+    craftQuery = (searchEl.value || '').trim();
+    const jobVal = document.getElementById('craft-job').value;
+    craftJob = jobVal === '' ? null : parseInt(jobVal, 10);
+    // garde l'URL partageable / rechargeable avec les filtres actifs
+    const qs = craftBuildParams().toString();
+    history.replaceState(null, '', '/crafts' + (qs ? '?' + qs : ''));
+    craftPager.reset();
+    refreshCrafts();
+  }
+
+  function refreshCrafts() {
+    fetch('/api/crafts?' + craftBuildParams().toString())
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.in_atelier) atelierSet = new Set(data.in_atelier);
+        if (data.in_forge) forgeSet = new Set(data.in_forge);
+        if (data.in_holding) holdingSet = new Set(data.in_holding);
+        renderCraftsCalculable(data.crafts);
+      })
+      .catch(() => {});
+  }
+
+  // Exposé sur window : appelé par un onclick inline dans les <th> générés, et
+  // la nav SPA ré-exécute ce script dans une portée isolée (new Function) où une
+  // simple déclaration de fonction ne serait pas globale. Cf. base.html.
+  window.sortCraftsBy = sortCraftsBy;
+
+  (function craftBindFilters() {
+    let debounce = null;
+    document.getElementById('craft-search').addEventListener('input', function () {
+      clearTimeout(debounce);
+      debounce = setTimeout(craftApplyFilters, 250);
+    });
+    document.getElementById('craft-job').addEventListener('change', craftApplyFilters);
+    const minEl = document.getElementById('craft-lvl-min');
+    const maxEl = document.getElementById('craft-lvl-max');
+    // 'input' = pendant le glissement (barre + libellé en direct, aucune requête)
+    // 'change' = pouce relâché → on relance le filtrage une seule fois
+    minEl.addEventListener('input', craftSyncLevels);
+    maxEl.addEventListener('input', craftSyncLevels);
+    minEl.addEventListener('change', craftApplyFilters);
+    maxEl.addEventListener('change', craftApplyFilters);
+    craftSyncLevels(); // position initiale de la barre selon les valeurs du serveur
+  })();
+
+  renderCraftsCalculable(initialCrafts);
+  setInterval(refreshCrafts, 2000);
+</script>
+{% endblock %}

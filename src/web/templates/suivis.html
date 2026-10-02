@@ -1,0 +1,560 @@
+{% extends "base.html" %}
+{% block title %}Suivis · Kamas{% endblock %}
+{% macro delta(value) -%}
+{%- if value < 0 -%}
+<span class="delta-negative">-{{ "{:,}".format((-value) | round | int).replace(",", " ") }}</span>
+{%- else -%}
+<span class="delta-positive">+{{ "{:,}".format(value | round | int).replace(",", " ") }}</span>
+{%- endif -%}
+{%- endmacro %}
+{% macro k(v) -%}{{ "{:,}".format(v | int).replace(",", " ") }}{%- endmacro %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Suivis</h1>
+  </div>
+</div>
+
+{% if error_message %}
+<div class="warning-banner" style="margin-bottom:20px">
+  <span>⚠️</span>
+  <div>{{ error_message }}</div>
+</div>
+{% endif %}
+
+<div class="period-picker" id="suivis-period">
+  <button type="button" class="period-opt active" data-period="all">Tout</button>
+  <button type="button" class="period-opt" data-period="7">7 j</button>
+  <button type="button" class="period-opt" data-period="30">30 j</button>
+  <button type="button" class="period-opt" data-period="90">90 j</button>
+  <button type="button" class="period-opt" data-period="custom">Perso</button>
+  <span class="period-custom" id="period-custom" hidden>
+    <span class="item-sub">du</span>
+    <input type="date" class="period-date" id="period-from" />
+    <span class="item-sub">au</span>
+    <input type="date" class="period-date" id="period-to" />
+  </span>
+</div>
+
+<div class="stat-row">
+  <div class="stat-tile">
+    <div class="stat-label" id="tile-invest-label">Investi (forge + en cours + vendu)</div>
+    <div class="stat-value kamas" id="stat-invested-global">{{ k(total_invested) }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label" id="tile-mid-label">Bénéfice potentiel (au prix visé)</div>
+    <div class="stat-value" id="potential-value">{{ delta(total_potential) }}</div>
+    <div class="stat-hint" id="tile-mid-hint">CA à la revente : <span class="kamas" id="potential-revenue">{{ k(total_potential_revenue) }}</span> — à ajouter à ton argent actuel</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label" id="tile-realized-label">Bénéfice réalisé</div>
+    <div class="stat-value" id="stat-realized-global">{{ delta(total_realized) }}</div>
+  </div>
+</div>
+
+{% if forgemagie %}
+<div class="section-title mt-24">En forgemagie ({{ forge_count }})</div>
+<div class="table-card table-card--overflow-visible">
+  <div id="forge-list">
+    {% for t in forgemagie %}
+    <div class="forge-line">
+      <a class="item-cell" href="/history?item_id={{ t.item_id }}&category={{ t.category }}" style="flex:1; min-width:0">
+        <div class="item-icon"><img src="/icons/{{ t.item_id }}.png" alt="" onerror="this.style.display='none'" /></div>
+        <div class="item-name">{{ t.name }}</div>
+      </a>
+      <span class="item-sub">x{{ t.quantity }}</span>
+      <span class="forge-buy">
+        <span class="item-sub">Achat</span>
+        <input class="ghost-price price-input" type="text" inputmode="numeric" value="{{ k(t.buy_price_kamas) }}"
+               data-forge-buy="{{ t.id }}" title="Prix d'achat/craft — cliquer pour modifier, sauvegardé automatiquement" />
+        <span class="ghost-k">K</span>
+      </span>
+      <form method="post" action="/suivis/{{ t.id }}/forge-confirm" class="forge-form">
+        <input class="text-input text-input-sm price-input" type="number" name="rune_cost_kamas" min="0" step="1"
+               value="{{ t.rune_cost_kamas or '' }}" placeholder="Coût runes" style="width:120px"
+               data-forge-rune="{{ t.id }}" title="Coût de forgemagie en kamas (0 si aucun) — sauvegardé automatiquement" />
+        <input class="text-input text-input-sm price-input" type="number" name="sell_price_kamas" min="1" step="1"
+               value="{{ t.sell_price_kamas or '' }}" placeholder="Prix de vente" style="width:130px"
+               data-forge-sell="{{ t.id }}" title="Prix de vente visé une fois l'item forgemagé — sauvegardé automatiquement" />
+        <button type="submit" class="btn btn-primary btn-sm">Confirmer</button>
+      </form>
+      <form method="post" action="/suivis/{{ t.id }}/delete" data-confirm="Supprimer ce suivi ?">
+        <button type="submit" class="btn btn-icon-sm btn-danger">✕</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+<div id="forge-pager"></div>
+{% endif %}
+
+<div class="section-title mt-24">En cours ({{ holding_count }})</div>
+<div class="stat-row stat-row--sub">
+  <div class="stat-tile">
+    <div class="stat-label">Investi en cours</div>
+    <div class="stat-value kamas" id="stat-invested-holding">{{ k(holding_invested) }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">Bénéfice potentiel (au prix visé)</div>
+    <div class="stat-value" id="holding-potential-value">{{ delta(total_potential) }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">CA potentiel à la revente</div>
+    <div class="stat-value kamas" id="holding-potential-revenue">{{ k(total_potential_revenue) }}</div>
+  </div>
+</div>
+<div class="table-card table-card--overflow-visible">
+  {% if holding_groups %}
+  <div id="holding-groups">
+    {% for g in holding_groups %}
+    <div class="trade-group">
+      <button type="button" class="trade-group-head" data-toggle>
+        <span class="trade-head-item">
+          <span class="item-icon"><img src="/icons/{{ g.item_id }}.png" alt="" onerror="this.style.display='none'" /></span>
+          <span class="item-name">{{ g.name }}</span>
+        </span>
+        <span class="badge badge-neutral">x{{ g.total_quantity }}</span>
+        <span class="trade-head-stat">Achat <span class="kamas group-buy-total">{{ k(g.total_buy) }}</span></span>
+        <span class="trade-head-stat">Vente <span class="group-sell-total">{% if g.sell_known %}<span class="kamas">{{ k(g.total_sell) }}</span>{% else %}—{% endif %}</span></span>
+        <span class="trade-chevron">›</span>
+      </button>
+      <div class="trade-group-body">
+        {% for t in g.trades %}
+        <div class="trade-line">
+          <span class="item-sub">x{{ t.quantity }}</span>
+          <span class="forge-buy">
+            <span class="item-sub">Achat</span>
+            <input class="ghost-price price-input" type="text" inputmode="numeric" value="{{ k(t.effective_buy) }}"
+                   data-buy-total="{{ t.id }}" title="Prix d'achat total à l'unité — modifiable, sauvegardé automatiquement" />
+            <span class="ghost-k">K</span>
+          </span>
+          {% if t.rune_cost_kamas %}<span class="item-sub">(dont {{ k(t.rune_cost_kamas) }} runes)</span>{% endif %}
+          <span class="line-potential">
+            <span class="item-sub">Bénéf. potentiel</span>
+            <span data-line-potential>{% if t.sell_price_kamas is not none %}{{ delta(t.sell_price_kamas - t.effective_buy) }}{% else %}—{% endif %}</span>
+          </span>
+          <form method="post" action="/suivis/{{ t.id }}/sell" class="trade-line-form">
+            <input class="text-input text-input-sm price-input" type="number" name="sell_price_kamas" value="{{ t.sell_price_kamas or '' }}"
+                   placeholder="Prix de vente" min="1" step="1" style="width:130px" data-sell-save="{{ t.id }}" data-buy="{{ t.effective_buy }}"
+                   title="Le prix se sauvegarde tout seul quand tu quittes le champ" />
+            <button type="submit" class="btn btn-primary btn-sm">Vendu</button>
+          </form>
+          <form method="post" action="/suivis/{{ t.id }}/delete" data-confirm="Supprimer ce suivi ?">
+            <button type="submit" class="btn btn-icon-sm btn-danger" title="Supprimer">✕</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">Rien en cours — clique "Suivre" sur un item depuis Crafts, Familiers ou Prix (les équipements passent d'abord par la forgemagie).</div>
+  {% endif %}
+</div>
+<div id="holding-pager"></div>
+
+<div class="section-title mt-24">Vendus ({{ sold_count }})</div>
+<div class="stat-row stat-row--sub">
+  <div class="stat-tile">
+    <div class="stat-label">Investi (vendu)</div>
+    <div class="stat-value kamas" id="stat-invested-sold">{{ k(sold_invested) }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">CA réalisé (encaissé)</div>
+    <div class="stat-value kamas">{{ k(sold_revenue) }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">Bénéfice réalisé</div>
+    <div class="stat-value" id="stat-realized-sold">{{ delta(total_realized) }}</div>
+  </div>
+</div>
+<div class="table-card table-card--overflow-visible">
+  {% if sold_groups %}
+  <div id="sold-groups">
+    {% for g in sold_groups %}
+    <div class="trade-group">
+      <button type="button" class="trade-group-head" data-toggle>
+        <span class="trade-head-item">
+          <span class="item-icon"><img src="/icons/{{ g.item_id }}.png" alt="" onerror="this.style.display='none'" /></span>
+          <span class="item-name">{{ g.name }}</span>
+        </span>
+        <span class="badge badge-neutral">x{{ g.total_quantity }}</span>
+        <span class="trade-head-stat">Achat <span class="kamas group-buy-total">{{ k(g.total_buy) }}</span></span>
+        <span class="trade-head-stat">Vente <span class="kamas">{{ k(g.total_sell) }}</span></span>
+        <span class="trade-head-stat">Marge <span class="group-margin-total">{{ delta(g.total_profit) }}</span></span>
+        <span class="trade-chevron">›</span>
+      </button>
+      <div class="trade-group-body">
+        {% for t in g.trades %}
+        <div class="trade-line">
+          <span class="item-sub">x{{ t.quantity }}</span>
+          <span class="forge-buy">
+            <span class="item-sub">Achat</span>
+            <input class="ghost-price price-input" type="text" inputmode="numeric" value="{{ k(t.effective_buy) }}"
+                   data-buy-total="{{ t.id }}" data-sell="{{ t.sell_price_kamas }}" data-sold-at="{{ t.sold_at }}" title="Prix d'achat total à l'unité — modifiable, sauvegardé automatiquement" />
+            <span class="ghost-k">K</span>
+          </span>
+          <span class="kamas">Vente {{ k(t.sell_price_kamas) }}</span>
+          <span>Marge <span class="line-margin">{{ delta(t.profit) }}</span></span>
+          <span class="item-sub">vendu {{ t.sold_at[:10] if t.sold_at else "—" }}</span>
+          <div style="margin-left:auto; display:flex; gap:6px; align-items:center">
+            <form method="post" action="/suivis/{{ t.id }}/reopen">
+              <button type="submit" class="btn btn-sm" title="Annuler la vente et remettre en vente">↩ Remettre en cours</button>
+            </form>
+            <form method="post" action="/suivis/{{ t.id }}/delete" data-confirm="Supprimer ce suivi ?">
+              <button type="submit" class="btn btn-icon-sm btn-danger">✕</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">Aucune vente enregistrée pour l'instant.</div>
+  {% endif %}
+</div>
+<div id="sold-pager"></div>
+
+<script>
+  // Accordéon : la case principale d'un groupe déplie/replie la liste de ses
+  // exemplaires avec une animation de glissement (max-height mesuré à l'ouverture).
+  document.querySelectorAll('.trade-group-head[data-toggle]').forEach(function (head) {
+    head.addEventListener('click', function () {
+      var group = head.closest('.trade-group');
+      var body = group.querySelector('.trade-group-body');
+      var open = group.classList.toggle('open');
+      body.style.maxHeight = open ? (body.scrollHeight + 'px') : '0';
+    });
+  });
+
+  // Auto-enregistrement du prix de vente "En cours" : plus besoin de bouton
+  // Enregistrer, le prix part en arrière-plan quand on quitte le champ (ou
+  // Entrée). Entrée ne DOIT PAS valider "Vendu" — on sauvegarde et on sort.
+  function deltaHtml(v) {
+    var cls = v < 0 ? 'delta-negative' : 'delta-positive';
+    return '<span class="' + cls + '">' + (v < 0 ? '-' : '+') + window.kamasFormatThousands(Math.abs(Math.round(v))) + '</span>';
+  }
+  function updateGroupSellTotal(inp) {
+    var group = inp.closest('.trade-group');
+    if (!group) return;
+    var total = 0, any = false;
+    group.querySelectorAll('input[data-sell-save]').forEach(function (pi) {
+      var v = parseInt(pi.value.replace(/\s/g, ''), 10);
+      if (!isNaN(v)) { total += v; any = true; }
+    });
+    var el = group.querySelector('.group-sell-total');
+    if (el) el.innerHTML = any ? '<span class="kamas">' + window.kamasFormatThousands(total) + '</span>' : '—';
+  }
+  // Bénéfice potentiel de CETTE ligne (prix visé - coût réel de l'exemplaire).
+  function updateLinePotential(inp) {
+    var line = inp.closest('.trade-line');
+    if (!line) return;
+    var el = line.querySelector('[data-line-potential]');
+    if (!el) return;
+    var sell = parseInt(inp.value.replace(/\s/g, ''), 10);
+    var buy = parseInt(inp.getAttribute('data-buy'), 10);
+    el.innerHTML = (!isNaN(sell) && !isNaN(buy)) ? deltaHtml(sell - buy) : '—';
+  }
+  function stripNum(s) { var n = parseInt(String(s || '').replace(/\s/g, ''), 10); return isNaN(n) ? 0 : n; }
+  function setTileKamas(id, v) { var el = document.getElementById(id); if (el) el.textContent = window.kamasFormatThousands(v); }
+  function setTileDelta(id, v) { var el = document.getElementById(id); if (el) el.innerHTML = deltaHtml(v); }
+  function setLabel(id, txt) { var el = document.getElementById(id); if (el) el.textContent = txt; }
+  function setHtml(id, html) { var el = document.getElementById(id); if (el) el.innerHTML = html; }
+  // Période active pour les 3 tuiles globales : null = "Tout" ; sinon {from,to} en ms.
+  var activePeriod = null;
+
+  // En-têtes de groupe : Total Achat (Σ coût effectif) sur tous les groupes ;
+  // Marge (Σ vente - effectif) sur les groupes Vendus (repérés par data-sell sur
+  // le champ d'achat). Le Total Vente "En cours" reste géré par updateGroupSellTotal.
+  function recomputeGroupHeads() {
+    document.querySelectorAll('.trade-group').forEach(function (group) {
+      var buyTotal = 0, marginTotal = 0, isSold = false;
+      group.querySelectorAll('[data-buy-total]').forEach(function (b) {
+        var eff = stripNum(b.value);
+        buyTotal += eff;
+        if (b.hasAttribute('data-sell')) { isSold = true; marginTotal += stripNum(b.getAttribute('data-sell')) - eff; }
+      });
+      var bt = group.querySelector('.group-buy-total');
+      if (bt) bt.textContent = window.kamasFormatThousands(buyTotal);
+      var mt = group.querySelector('.group-margin-total');
+      if (isSold && mt) mt.innerHTML = deltaHtml(marginTotal);
+    });
+  }
+
+  // Recalcule EN DIRECT tous les agrégats à partir des champs du DOM (aucun
+  // refresh de page) : Investi (forge=achat+runes, En cours, Vendu, global),
+  // Bénéfice potentiel (En cours + global) + CA potentiel, Bénéfice réalisé
+  // (Vendus + global), et les en-têtes de groupe. Appelé après chaque save
+  // d'achat ou de vente. (Nom historique "updatePotential" conservé pour les
+  // appelants existants.)
+  function updatePotential() {
+    var forgeInvested = 0;
+    document.querySelectorAll('#forge-list .forge-line').forEach(function (line) {
+      var buy = line.querySelector('[data-forge-buy]');
+      var rune = line.querySelector('[data-forge-rune]');
+      forgeInvested += stripNum(buy && buy.value) + stripNum(rune && rune.value);
+    });
+    var holdingInvested = 0, potential = 0, potentialRev = 0;
+    document.querySelectorAll('#holding-groups .trade-line').forEach(function (line) {
+      var buyEl = line.querySelector('[data-buy-total]');
+      var eff = stripNum(buyEl && buyEl.value);
+      holdingInvested += eff;
+      var sellEl = line.querySelector('input[data-sell-save]');
+      var sellRaw = sellEl && sellEl.value.replace(/\s/g, '');
+      if (sellRaw) { var s = parseInt(sellRaw, 10); if (!isNaN(s)) { potential += s - eff; potentialRev += s; } }
+    });
+    var soldInvested = 0, realized = 0;
+    document.querySelectorAll('#sold-groups .trade-line').forEach(function (line) {
+      var buyEl = line.querySelector('[data-buy-total]');
+      var eff = stripNum(buyEl && buyEl.value);
+      soldInvested += eff;
+      realized += stripNum(buyEl && buyEl.getAttribute('data-sell')) - eff;
+    });
+    // Sous-tuiles de section (toujours TOUT — non concernées par la période).
+    setTileKamas('stat-invested-holding', holdingInvested);
+    setTileKamas('stat-invested-sold', soldInvested);
+    setTileDelta('stat-realized-sold', realized);
+    setTileDelta('holding-potential-value', potential);
+    setTileKamas('holding-potential-revenue', potentialRev);
+    recomputeGroupHeads();
+
+    // 3 tuiles GLOBALES : "Tout" = Investi total / Bénéfice potentiel / Réalisé.
+    // Une période = P&L RÉALISÉ sur les items vendus dans la fenêtre : Investi
+    // engagé / CA encaissé / Bénéfice réalisé (filtre par data-sold-at).
+    if (!activePeriod) {
+      setLabel('tile-invest-label', 'Investi (forge + en cours + vendu)');
+      setTileKamas('stat-invested-global', forgeInvested + holdingInvested + soldInvested);
+      setLabel('tile-mid-label', 'Bénéfice potentiel (au prix visé)');
+      setTileDelta('potential-value', potential);
+      setHtml('tile-mid-hint', 'CA à la revente : <span class="kamas">' + window.kamasFormatThousands(potentialRev) + '</span> — à ajouter à ton argent actuel');
+      setLabel('tile-realized-label', 'Bénéfice réalisé');
+      setTileDelta('stat-realized-global', realized);
+    } else {
+      var pInv = 0, pRev = 0, pProfit = 0, pCount = 0;
+      document.querySelectorAll('#sold-groups .trade-line [data-sold-at]').forEach(function (b) {
+        var ts = Date.parse(b.getAttribute('data-sold-at'));
+        if (isNaN(ts) || ts < activePeriod.from || ts > activePeriod.to) return;
+        var eff = stripNum(b.value), sell = stripNum(b.getAttribute('data-sell'));
+        pInv += eff; pRev += sell; pProfit += sell - eff; pCount += 1;
+      });
+      setLabel('tile-invest-label', 'Investi (vendu, période)');
+      setTileKamas('stat-invested-global', pInv);
+      setLabel('tile-mid-label', 'CA encaissé (période)');
+      setHtml('potential-value', '<span class="kamas">' + window.kamasFormatThousands(pRev) + '</span>');
+      setHtml('tile-mid-hint', pCount + (pCount > 1 ? ' ventes' : ' vente') + ' sur la période');
+      setLabel('tile-realized-label', 'Bénéfice réalisé (période)');
+      setTileDelta('stat-realized-global', pProfit);
+    }
+  }
+  document.querySelectorAll('input[data-sell-save]').forEach(function (inp) {
+    inp._lastSaved = inp.value.replace(/\s/g, '');
+    function save() {
+      var val = inp.value.replace(/\s/g, '');
+      if (val === inp._lastSaved || val === '') return;
+      inp._lastSaved = val;
+      fetch('/suivis/' + inp.getAttribute('data-sell-save') + '/price', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'fetch' },
+        body: 'sell_price_kamas=' + encodeURIComponent(val),
+      }).then(function () {
+        inp.classList.add('saved');
+        setTimeout(function () { inp.classList.remove('saved'); }, 900);
+        updateLinePotential(inp);
+        updateGroupSellTotal(inp);
+        updatePotential();
+      }).catch(function () {});
+    }
+    inp.addEventListener('change', save);
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+    });
+  });
+
+  // Forgemagie : auto-enregistrement du coût runes ET du prix de vente dès qu'on
+  // quitte le champ. Sans ça, confirmer UNE fm rechargeait la page (redirect) et
+  // faisait perdre les valeurs tapées — mais pas encore confirmées — des AUTRES
+  // lignes (jamais écrites en base). Entrée sauvegarde et sort (ne confirme PAS).
+  [['data-forge-buy', 'buy_price_kamas', '/buy-price'],
+   ['data-forge-rune', 'rune_cost_kamas', '/rune-cost'],
+   ['data-forge-sell', 'sell_price_kamas', '/price']].forEach(function (cfg) {
+    var attr = cfg[0], field = cfg[1], path = cfg[2];
+    document.querySelectorAll('input[' + attr + ']').forEach(function (inp) {
+      inp._lastSaved = inp.value.replace(/\s/g, '');
+      function save() {
+        var val = inp.value.replace(/\s/g, '');
+        if (val === inp._lastSaved || val === '') return;
+        inp._lastSaved = val;
+        fetch('/suivis/' + inp.getAttribute(attr) + path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'fetch' },
+          body: field + '=' + encodeURIComponent(val),
+        }).then(function () {
+          inp.classList.add('saved');
+          setTimeout(function () { inp.classList.remove('saved'); }, 900);
+          updatePotential();  // forge (achat/runes) -> met à jour l'Investi global
+        }).catch(function () {});
+      }
+      inp.addEventListener('change', save);
+      inp.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+      });
+    });
+  });
+
+  // Prix d'achat éditable dans En cours / Vendus (champ fantôme, apparence figée).
+  // La valeur = coût TOTAL à l'unité (buy + runes) ; /buy-total re-répartit côté
+  // serveur (buy = total - runes). Recalcul EN DIRECT (aucun refresh) :
+  //  - ligne : data-buy du champ de vente + potentiel (En cours), marge (Vendus) ;
+  //  - agrégats : updatePotential() recalcule toutes les tuiles + en-têtes de
+  //    groupe à partir du DOM, pour En cours ET Vendus.
+  document.querySelectorAll('input[data-buy-total]').forEach(function (inp) {
+    inp._lastSaved = inp.value.replace(/\s/g, '');
+    function save() {
+      var val = inp.value.replace(/\s/g, '');
+      if (val === inp._lastSaved || val === '') return;
+      inp._lastSaved = val;
+      fetch('/suivis/' + inp.getAttribute('data-buy-total') + '/buy-total', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'fetch' },
+        body: 'buy_price_kamas=' + encodeURIComponent(val),
+      }).then(function () {
+        inp.classList.add('saved');
+        setTimeout(function () { inp.classList.remove('saved'); }, 900);
+        var newEff = parseInt(val, 10);
+        var line = inp.closest('.trade-line');
+        if (line && !isNaN(newEff)) {
+          var sellInp = line.querySelector('input[data-sell-save]');  // En cours
+          if (sellInp) { sellInp.setAttribute('data-buy', newEff); updateLinePotential(sellInp); }
+          var sell = parseInt(inp.getAttribute('data-sell'), 10);      // Vendus
+          var marginEl = line.querySelector('.line-margin');
+          if (marginEl && !isNaN(sell)) marginEl.innerHTML = deltaHtml(sell - newEff);
+        }
+        updatePotential();  // agrégats (tuiles Investi/Bénéfice + en-têtes) — En cours ET Vendus
+      }).catch(function () {});
+    }
+    inp.addEventListener('change', save);
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+    });
+  });
+
+  // Sélecteur de période des 3 tuiles globales (Tout / 7j / 30j / 90j / Perso).
+  // 100% client : filtre les ventes par data-sold-at, updatePotential fait le
+  // reste (P&L réalisé de la fenêtre) — instantané, aucun appel serveur.
+  (function () {
+    var picker = document.getElementById('suivis-period');
+    if (!picker) return;
+    var custom = document.getElementById('period-custom');
+    var fromEl = document.getElementById('period-from');
+    var toEl = document.getElementById('period-to');
+    function applyCustom() {
+      var f = fromEl.value ? Date.parse(fromEl.value + 'T00:00:00') : -Infinity;
+      var t = toEl.value ? Date.parse(toEl.value + 'T23:59:59') : Infinity;
+      activePeriod = { from: f, to: t };
+      updatePotential();
+    }
+    picker.querySelectorAll('.period-opt').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        picker.querySelectorAll('.period-opt').forEach(function (b) { b.classList.toggle('active', b === btn); });
+        var p = btn.getAttribute('data-period');
+        custom.hidden = (p !== 'custom');
+        if (p === 'all') { activePeriod = null; updatePotential(); }
+        else if (p === 'custom') { applyCustom(); }
+        else { activePeriod = { from: Date.now() - parseInt(p, 10) * 86400000, to: Infinity }; updatePotential(); }
+      });
+    });
+    fromEl.addEventListener('change', applyCustom);
+    toEl.addEventListener('change', applyCustom);
+  })();
+
+  // Pagination (~20/page) des groupes/lignes — réutilise le pager partagé.
+  (function () {
+    function paginateRows(bodyId, pagerId) {
+      var body = document.getElementById(bodyId);
+      var pager = document.getElementById(pagerId);
+      if (!body || !pager) return;
+      var rows = Array.prototype.slice.call(body.children);
+      var size = window.kamasStoredPageSize(20);
+      var page = 0;
+      function draw() {
+        var pages = Math.max(1, Math.ceil(rows.length / size));
+        if (page > pages - 1) page = pages - 1;
+        rows.forEach(function (r, i) {
+          r.style.display = (i >= page * size && i < page * size + size) ? '' : 'none';
+        });
+        if (rows.length <= window.KAMAS_PAGE_SIZES[0]) { pager.innerHTML = ''; return; }
+        var nav = pages > 1
+          ? '<button type="button" class="btn btn-sm" data-pg="prev"' + (page === 0 ? ' disabled' : '') + '>‹ Précédent</button>' +
+            '<span class="item-sub">Page ' + (page + 1) + ' / ' + pages + ' · ' + rows.length + ' éléments</span>' +
+            '<button type="button" class="btn btn-sm" data-pg="next"' + (page >= pages - 1 ? ' disabled' : '') + '>Suivant ›</button>'
+          : '<span class="item-sub">' + rows.length + ' éléments</span>';
+        pager.innerHTML =
+          '<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:14px 2px 2px">' +
+            '<div style="display:flex;align-items:center;gap:14px">' + nav + '</div>' +
+            window.kamasSizeSelect(size) +
+          '</div>';
+        Array.prototype.forEach.call(pager.querySelectorAll('button[data-pg]'), function (b) {
+          b.addEventListener('click', function () { page += (b.getAttribute('data-pg') === 'next' ? 1 : -1); draw(); });
+        });
+        var sel = pager.querySelector('select[data-pgsize]');
+        if (sel) sel.addEventListener('change', function () {
+          size = parseInt(this.value, 10) || 20; page = 0;
+          try { localStorage.setItem('kamas_page_size', size); } catch (e) {}
+          draw();
+        });
+      }
+      draw();
+    }
+    paginateRows('forge-list', 'forge-pager');
+    paginateRows('holding-groups', 'holding-pager');
+    paginateRows('sold-groups', 'sold-pager');
+  })();
+</script>
+
+<!-- Modale de confirmation maison (remplace le confirm() natif). Placée dans
+     .main : recréée à chaque affichage de la page (y compris en nav SPA), et
+     le script ci-dessous re-câble les formulaires/boutons à chaque fois. -->
+<div class="confirm-overlay" id="suivis-confirm-overlay" aria-hidden="true">
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="suivis-confirm-title">
+    <div class="confirm-title" id="suivis-confirm-title">Supprimer ce suivi ?</div>
+    <div class="confirm-message">Cette action est définitive.</div>
+    <div class="confirm-actions">
+      <button type="button" class="btn btn-sm" id="suivis-confirm-cancel">Annuler</button>
+      <button type="button" class="btn btn-sm btn-danger" id="suivis-confirm-ok">Supprimer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var overlay = document.getElementById('suivis-confirm-overlay');
+    if (!overlay) return;
+    var titleEl = document.getElementById('suivis-confirm-title');
+    var okBtn = document.getElementById('suivis-confirm-ok');
+    var cancelBtn = document.getElementById('suivis-confirm-cancel');
+    var pending = null;
+
+    function open(form) {
+      pending = form;
+      titleEl.textContent = form.getAttribute('data-confirm') || 'Confirmer ?';
+      overlay.classList.add('open');
+      overlay.setAttribute('aria-hidden', 'false');
+      cancelBtn.focus();
+    }
+    function close() { pending = null; overlay.classList.remove('open'); overlay.setAttribute('aria-hidden', 'true'); }
+
+    document.querySelectorAll('form[data-confirm]').forEach(function (form) {
+      form.addEventListener('submit', function (e) { e.preventDefault(); open(form); });
+    });
+    okBtn.addEventListener('click', function () {
+      var f = pending; close();
+      if (f) f.submit();  // submit() programmatique ne redéclenche pas 'submit'
+    });
+    cancelBtn.addEventListener('click', close);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+  })();
+</script>
+{% endblock %}

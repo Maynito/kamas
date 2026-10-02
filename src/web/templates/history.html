@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+{% block title %}Historique · Kamas{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Historique de prix</h1>
+  </div>
+  <div style="display:flex; align-items:center; gap:12px">
+    <span class="badge badge-success"><span class="confidence-dot" style="background:var(--success)"></span>Mise à jour auto</span>
+    <div class="search-combo" id="resource-combo">
+      <div class="search-combo-icon-wrap">
+        {% if selected_id %}<img src="/icons/{{ selected_id }}.png" alt="" onerror="this.style.display='none'" />{% endif %}
+      </div>
+      <input class="text-input" id="resource-search"
+             value="{{ selected_name or '' }}" placeholder="Rechercher..." autocomplete="off" />
+      <div class="search-suggestions" id="resource-suggestions"></div>
+    </div>
+    {% if selected_id %}
+    {% set suivre_price = (pet_level_prices[0] if pet_level_prices[0] is not none else pet_level_prices[100]) if category == 'familier' else lot_prices[1] %}
+    <span class="row-menu">
+      <button type="button" class="menu-trigger" title="Actions" aria-label="Actions">▾</button>
+      <div class="menu-panel" hidden>
+        <button type="button" class="menu-item" data-suivre data-item-id="{{ selected_id }}" data-category="{{ category }}" data-price="{{ suivre_price if suivre_price is not none else '' }}">Suivre</button>
+      </div>
+    </span>
+    {% if category == 'familier' %}
+    <button type="button" class="btn" onclick="atelierPrepare({{ selected_id }}, 'pet', this)">+ Préparer</button>
+    {% elif category == 'equipement' %}
+    <span style="display:inline-flex; align-items:center; gap:4px">
+      <input class="prep-qty" type="number" min="1" value="1" title="Nombre de crafts" />
+      <button type="button" class="btn" onclick="atelierPrepare({{ selected_id }}, 'equipment', this)">+ Préparer</button>
+    </span>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+<div class="mt-24" style="display:flex; gap:8px; margin-bottom:20px">
+  <a href="/history?category=ressource" class="btn {{ 'btn-primary' if category == 'ressource' else '' }}">Ressources</a>
+  <a href="/history?category=familier" class="btn {{ 'btn-primary' if category == 'familier' else '' }}">Familiers</a>
+  <a href="/history?category=equipement" class="btn {{ 'btn-primary' if category == 'equipement' else '' }}">Équipements</a>
+</div>
+
+<script>
+  const resources = {{ resources_json | safe }};
+  const category = {{ category | tojson }};
+  const input = document.getElementById('resource-search');
+  const box = document.getElementById('resource-suggestions');
+  let highlighted = -1;
+  let matches = [];
+
+  function goTo(id) { window.location.href = '/history?item_id=' + id + '&category=' + category; }
+
+  function renderSuggestions(list) {
+    matches = list;
+    highlighted = -1;
+    if (!list.length) {
+      box.classList.remove('open');
+      box.innerHTML = '';
+      return;
+    }
+    box.innerHTML = list.map((r, i) =>
+      '<div class="search-suggestion-row" data-index="' + i + '" data-id="' + r.id + '">' +
+        '<img src="/icons/' + r.id + '.png" alt="" onerror="this.style.display=\'none\'" />' +
+        '<span>' + r.name + '</span>' +
+      '</div>'
+    ).join('');
+    box.classList.add('open');
+    box.querySelectorAll('.search-suggestion-row').forEach((row) => {
+      row.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        goTo(this.dataset.id);
+      });
+    });
+  }
+
+  function updateHighlight() {
+    box.querySelectorAll('.search-suggestion-row').forEach((row, i) => {
+      row.classList.toggle('highlighted', i === highlighted);
+    });
+  }
+
+  input.addEventListener('input', function () {
+    const q = this.value.trim().toLowerCase();
+    if (!q) { renderSuggestions([]); return; }
+    renderSuggestions(resources.filter((r) => r.name.toLowerCase().includes(q)).slice(0, 8));
+  });
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowDown' && matches.length) {
+      e.preventDefault();
+      highlighted = (highlighted + 1) % matches.length;
+      updateHighlight();
+    } else if (e.key === 'ArrowUp' && matches.length) {
+      e.preventDefault();
+      highlighted = (highlighted - 1 + matches.length) % matches.length;
+      updateHighlight();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlighted >= 0 && matches[highlighted]) {
+        goTo(matches[highlighted].id);
+        return;
+      }
+      const q = this.value.trim().toLowerCase();
+      const exact = resources.find((r) => r.name.toLowerCase() === q);
+      const starts = resources.find((r) => r.name.toLowerCase().startsWith(q));
+      const match = exact || starts;
+      if (match) goTo(match.id);
+    } else if (e.key === 'Escape') {
+      renderSuggestions([]);
+    }
+  });
+
+  // Auto-nettoyant pour survivre à la navigation SPA (le contenu est ré-exécuté
+  // sans recharger le document, cf. base.html) : on retire l'écouteur précédent
+  // avant d'en rajouter un, sinon chaque visite d'Historique empilerait un
+  // écouteur `document` de plus (fuite + fermetures obsolètes).
+  if (window.__histDocClick) document.removeEventListener('click', window.__histDocClick);
+  window.__histDocClick = function (e) {
+    if (!e.target.closest('#resource-combo')) renderSuggestions([]);
+  };
+  document.addEventListener('click', window.__histDocClick);
+</script>
+
+{% if not available %}
+<div class="empty-state">
+  {% if category == "familier" %}
+  Aucun familier suivi pour l'instant — le panneau détail d'une espèce (filtre Niveau 0/100) ou le panneau "Cours du marché" doit être capturé au moins une fois.
+  {% else %}
+  Aucun historique collecté pour l'instant dans cette catégorie.
+  {% endif %}
+</div>
+{% else %}
+
+{% if category == "familier" %}
+<div class="section-title">Prix par niveau</div>
+<div class="table-card mt-24" style="margin-bottom:24px">
+  <table>
+    <thead><tr><th>Objet</th><th class="num">Niveau 0</th><th class="num">Niveau 100</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>
+          <span class="item-cell">
+            <span class="item-icon"><img src="/icons/{{ selected_id }}.png" alt="" onerror="this.style.display='none'" /></span>
+            <span class="item-name">{{ selected_name }}</span>
+          </span>
+        </td>
+        <td class="num kamas" id="pet-price-0">{{ "{:,}".format(pet_level_prices[0]).replace(",", " ") if pet_level_prices[0] is not none else "—" }}</td>
+        <td class="num kamas" id="pet-price-100">{{ "{:,}".format(pet_level_prices[100]).replace(",", " ") if pet_level_prices[100] is not none else "—" }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card" style="margin-bottom:24px">
+  <div class="section-title" style="margin:0 0 12px">Renseigner un prix manuellement</div>
+  <form method="post" action="/history/price" style="display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap">
+    <input type="hidden" name="item_id" value="{{ selected_id }}" />
+    <input type="hidden" name="category" value="familier" />
+    <div>
+      <label class="field-label" for="pet_level">Niveau</label>
+      <select class="select" id="pet_level" name="pet_level">
+        <option value="0">Niveau 0</option>
+        <option value="100">Niveau 100</option>
+      </select>
+    </div>
+    <div>
+      <label class="field-label" for="price_kamas">Prix (kamas)</label>
+      <input class="text-input price-input" type="number" id="price_kamas" name="price_kamas" min="1" step="1" required />
+    </div>
+    <button type="submit" class="btn btn-primary">Enregistrer</button>
+  </form>
+  <p class="field-hint" style="margin-top:10px">Utile pour corriger une lecture OCR erronée, ou renseigner un prix vu en jeu sans repasser par un screenshot.</p>
+</div>
+
+{% else %}
+{% if category == "equipement" %}
+<div class="section-title">Prix HDV</div>
+<div class="table-card mt-24" style="margin-bottom:24px">
+  <table>
+    <thead><tr><th>Objet</th><th class="num">Prix</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>
+          <span class="item-cell">
+            <span class="item-icon"><img src="/icons/{{ selected_id }}.png" alt="" onerror="this.style.display='none'" /></span>
+            <span class="item-name">{{ selected_name }}</span>
+          </span>
+        </td>
+        <td class="num kamas" id="lot-price-1">{{ "{:,}".format(lot_prices[1]).replace(",", " ") if lot_prices[1] is not none else "—" }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="section-title">Prix HDV par lot</div>
+<div class="table-card mt-24" style="margin-bottom:24px">
+  <table>
+    <thead><tr><th>Objet</th><th class="num">x1</th><th class="num">x10</th><th class="num">x100</th><th class="num">x1000</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>
+          <span class="item-cell">
+            <span class="item-icon"><img src="/icons/{{ selected_id }}.png" alt="" onerror="this.style.display='none'" /></span>
+            <span class="item-name">{{ selected_name }}</span>
+          </span>
+        </td>
+        <td class="num kamas" id="lot-price-1">{{ "{:,}".format(lot_prices[1]).replace(",", " ") if lot_prices[1] is not none else "—" }}</td>
+        <td class="num kamas" id="lot-price-10">{{ "{:,}".format(lot_prices[10]).replace(",", " ") if lot_prices[10] is not none else "—" }}</td>
+        <td class="num kamas" id="lot-price-100">{{ "{:,}".format(lot_prices[100]).replace(",", " ") if lot_prices[100] is not none else "—" }}</td>
+        <td class="num kamas" id="lot-price-1000">{{ "{:,}".format(lot_prices[1000]).replace(",", " ") if lot_prices[1000] is not none else "—" }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if category == "ressource" %}
+<div class="card" style="margin-bottom:24px">
+  <div class="section-title" style="margin:0 0 12px">Nourrissage familier</div>
+  <div class="stat-row" style="margin-bottom:16px">
+    <div class="stat-tile">
+      <div class="stat-label">XP totale donnée</div>
+      <div class="stat-value" id="stat-xp-value">{{ "{:,}".format(xp_value).replace(",", " ") if xp_value is not none else "—" }}</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-label">Prix pour 1 XP</div>
+      <div class="stat-value" id="stat-price-per-xp">{{ "%.2f"|format(price_per_xp) if price_per_xp is not none else "—" }}</div>
+    </div>
+  </div>
+  <form method="post" action="/history/xp" style="display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap">
+    <input type="hidden" name="item_id" value="{{ selected_id }}" />
+    <div>
+      <label class="field-label" for="xp_value">XP totale donnée au nourrissage d'un familier</label>
+      <input class="text-input" type="number" id="xp_value" name="xp_value" min="1" step="1" value="{{ xp_value or '' }}" required />
+    </div>
+    <button type="submit" class="btn btn-primary">Enregistrer</button>
+  </form>
+  <p class="field-hint" style="margin-top:10px">Aucune source fiable (DofusDB ne l'expose pas) — à renseigner toi-même en observant le gain d'XP réel en jeu.</p>
+</div>
+{% endif %}
+
+<div class="card" style="margin-bottom:24px">
+  <div class="section-title" style="margin:0 0 12px">Renseigner un prix manuellement</div>
+  <form method="post" action="/history/price" style="display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap">
+    <input type="hidden" name="item_id" value="{{ selected_id }}" />
+    <input type="hidden" name="category" value="{{ category }}" />
+    {% if category == "equipement" %}
+    <input type="hidden" name="lot_size" value="1" />
+    {% else %}
+    <div>
+      <label class="field-label" for="lot_size">Lot</label>
+      <select class="select" id="lot_size" name="lot_size">
+        <option value="1">x1</option>
+        <option value="10">x10</option>
+        <option value="100">x100</option>
+        <option value="1000">x1000</option>
+      </select>
+    </div>
+    {% endif %}
+    <div>
+      <label class="field-label" for="price_kamas">Prix (kamas)</label>
+      <input class="text-input price-input" type="number" id="price_kamas" name="price_kamas" min="1" step="1" required />
+    </div>
+    <button type="submit" class="btn btn-primary">Enregistrer</button>
+  </form>
+  <p class="field-hint" style="margin-top:10px">Utile pour corriger une lecture OCR erronée, ou renseigner le prix de vente d'un équipement crafté (nécessaire pour que sa marge apparaisse dans Crafts).</p>
+</div>
+{% endif %}
+
+<div class="section-title">Cours du marché</div>
+<div class="stat-row mt-24" style="margin-bottom:24px">
+  <div class="stat-tile">
+    <div class="stat-label">Prix médian</div>
+    <div class="stat-value" id="stat-median">{{ "{:,}".format(median).replace(",", " ") if median is not none else "—" }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">Prix moyen</div>
+    <div class="stat-value" id="stat-mean">{{ "{:,}".format(mean).replace(",", " ") if mean is not none else "—" }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-label">Articles vendus (30j)</div>
+    <div class="stat-value" id="stat-quantity-sold">{{ "{:,}".format(quantity_sold).replace(",", " ") if quantity_sold is not none else "—" }}</div>
+  </div>
+</div>
+
+{% endif %}
+
+<script>
+  const selectedId = {{ selected_id | tojson }};
+
+  function formatKamasValue(value) {
+    return value === null || value === undefined ? '—' : String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+
+  function setTextIfPresent(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  function applyHistoryData(data) {
+    if (category === 'familier') {
+      setTextIfPresent('pet-price-0', formatKamasValue(data.pet_level_prices['0']));
+      setTextIfPresent('pet-price-100', formatKamasValue(data.pet_level_prices['100']));
+    } else {
+      [1, 10, 100, 1000].forEach((lot) => {
+        setTextIfPresent('lot-price-' + lot, formatKamasValue(data.lot_prices[lot]));
+      });
+      if (category === 'ressource') {
+        setTextIfPresent('stat-xp-value', formatKamasValue(data.xp_value));
+        setTextIfPresent(
+          'stat-price-per-xp',
+          data.price_per_xp !== null && data.price_per_xp !== undefined ? data.price_per_xp.toFixed(2) : '—'
+        );
+      }
+    }
+
+    // Cours du marché — commun aux 3 catégories (le panneau existe pour
+    // n'importe quelle catégorie d'objet, familiers compris, cf. hdvcreature3.png).
+    setTextIfPresent('stat-median', formatKamasValue(data.median));
+    setTextIfPresent('stat-mean', formatKamasValue(data.mean));
+    setTextIfPresent('stat-quantity-sold', formatKamasValue(data.quantity_sold));
+  }
+
+  function refreshHistory() {
+    if (selectedId === null) return;
+    fetch('/api/history?item_id=' + selectedId + '&category=' + category)
+      .then((r) => r.json())
+      .then(applyHistoryData)
+      .catch(() => {});
+  }
+
+  if (selectedId !== null) setInterval(refreshHistory, 2000);
+</script>
+{% endblock %}

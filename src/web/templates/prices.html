@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Prix · Kamas{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Prix {{ "des familiers" if category == "familier" else ("des équipements" if category == "equipement" else "des ressources") }}</h1>
+  </div>
+  <div style="display:flex; align-items:center; gap:12px">
+    <span class="badge badge-success"><span class="confidence-dot" style="background:var(--success)"></span>Mise à jour auto</span>
+    <input class="text-input" style="width:260px" id="price-filter" placeholder="Filtrer par nom..." oninput="onPriceFilter(this.value)" />
+  </div>
+</div>
+
+<div class="mt-24" style="display:flex; gap:8px; margin-bottom:20px">
+  <a href="/prices?category=ressource" class="btn {{ 'btn-primary' if category == 'ressource' else '' }}">Ressources</a>
+  <a href="/prices?category=familier" class="btn {{ 'btn-primary' if category == 'familier' else '' }}">Familiers</a>
+  <a href="/prices?category=equipement" class="btn {{ 'btn-primary' if category == 'equipement' else '' }}">Équipements</a>
+</div>
+
+<div class="table-card">
+  <table id="price-table">
+    <thead>
+      <tr>
+        <th>{{ "Familier" if category == "familier" else ("Équipement" if category == "equipement" else "Ressource") }}</th>
+        {% if category == "familier" %}
+        <th class="num">Niveau 0</th>
+        <th class="num">Niveau 100</th>
+        {% elif category == "equipement" %}
+        <th class="num">Prix</th>
+        {% else %}
+        <th class="num">x1</th>
+        <th class="num">x10</th>
+        <th class="num">x100</th>
+        <th class="num">x1000</th>
+        <th class="num">Prix / XP</th>
+        {% endif %}
+        <th style="width:100px"></th>
+      </tr>
+    </thead>
+    <tbody id="price-table-body"></tbody>
+  </table>
+  <div class="empty-state" id="price-empty-state" style="display:none">Aucun prix collecté pour l'instant dans cette catégorie — lance le collector pour capturer des prix à l'HDV.</div>
+</div>
+<div id="price-pager"></div>
+
+<script>
+  const initialResources = {{ resources | tojson }};
+  const category = {{ category | tojson }};
+  const priceColumns = category === 'familier' ? ['0', '100'] : (category === 'equipement' ? ['1'] : ['1', '10', '100', '1000']);
+  const showXpColumn = category === 'ressource';
+  let lastTopId = null;
+  let allResources = initialResources;
+  let priceQuery = '';
+  const pricePager = KamasPager('price-pager', 20);
+
+  function formatKamas(value) {
+    return value === null || value === undefined ? '—' : String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+
+  function formatXpPrice(value) {
+    return value === null || value === undefined ? '—' : formatKamas(Math.round(value));
+  }
+
+  function suggestedPriceFor(r) {
+    if (category === 'familier') {
+      const p0 = r.prices['0'], p100 = r.prices['100'];
+      return p0 !== null && p0 !== undefined ? p0 : (p100 !== null && p100 !== undefined ? p100 : '');
+    }
+    if (category === 'equipement') {
+      return r.prices['1'] !== null && r.prices['1'] !== undefined ? r.prices['1'] : '';
+    }
+    const perUnit = ['1', '10', '100', '1000']
+      .filter((l) => r.prices[l] !== null && r.prices[l] !== undefined)
+      .map((l) => r.prices[l] / Number(l));
+    return perUnit.length ? Math.round(Math.min(...perUnit)) : '';
+  }
+
+  function priceView() {
+    return priceQuery
+      ? allResources.filter((r) => r.name.toLowerCase().includes(priceQuery))
+      : allResources;
+  }
+
+  // Filtre PUIS pagine (~20/page) : on ne rend que la page courante des objets
+  // qui correspondent, plutôt que de tout rendre et masquer en CSS.
+  function renderPrices() {
+    const tbody = document.getElementById('price-table-body');
+    const emptyState = document.getElementById('price-empty-state');
+    const table = document.getElementById('price-table');
+
+    const view = priceView();
+    const newTop = allResources.length ? allResources[0].item_id : null;
+    const justUpdated = newTop !== lastTopId;
+    lastTopId = newTop;
+
+    if (!view.length) {
+      table.style.display = 'none';
+      emptyState.style.display = '';
+      document.getElementById('price-pager').innerHTML = '';
+      return;
+    }
+    table.style.display = '';
+    emptyState.style.display = 'none';
+
+    const pageItems = pricePager.apply(view, renderPrices);
+    tbody.innerHTML = pageItems.map((r) => `
+      <tr class="price-row${r.item_id === newTop && justUpdated ? ' just-updated' : ''}"
+          style="cursor:pointer" onclick="window.location='/history?item_id=${r.item_id}&category=${category}'">
+        <td>
+          <div class="item-cell">
+            <div class="item-icon"><img src="/icons/${r.item_id}.png" alt="" onerror="this.style.display='none'" /></div>
+            <div class="item-name">${r.name}</div>
+          </div>
+        </td>
+        ${priceColumns.map((col) => `<td class="num kamas">${formatKamas(r.prices[col])}</td>`).join('')}
+        ${showXpColumn ? `<td class="num kamas">${formatXpPrice(r.price_per_xp)}</td>` : ''}
+        <td onclick="event.stopPropagation()" style="white-space:nowrap">
+          <span class="row-menu">
+            <button type="button" class="menu-trigger" title="Actions" aria-label="Actions">▾</button>
+            <div class="menu-panel" hidden>
+              <button type="button" class="menu-item" data-suivre data-item-id="${r.item_id}" data-category="${category}" data-price="${suggestedPriceFor(r)}">Suivre</button>
+            </div>
+          </span>
+          ${category === 'familier'
+            ? `<button type="button" class="btn btn-sm" onclick="atelierPrepare(${r.item_id}, 'pet', this)">+ Préparer</button>`
+            : (category === 'equipement'
+              ? `<span style="display:inline-flex; align-items:center; gap:4px"><input class="prep-qty" type="number" min="1" value="1" title="Nombre de crafts" /><button type="button" class="btn btn-sm" onclick="atelierPrepare(${r.item_id}, 'equipment', this)">+ Préparer</button></span>`
+              : '')}
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function onPriceFilter(query) {
+    priceQuery = query.trim().toLowerCase();
+    pricePager.reset();
+    renderPrices();
+  }
+
+  function refreshPrices() {
+    fetch('/api/prices?category=' + category)
+      .then((r) => r.json())
+      .then((data) => {
+        allResources = data;
+        renderPrices();
+      })
+      .catch(() => {}); // le watcher/serveur peut être temporairement indisponible, on retentera au prochain tick
+  }
+
+  window.onPriceFilter = onPriceFilter; // appelé par un oninput inline (portée SPA isolée)
+  renderPrices();
+  setInterval(refreshPrices, 2000);
+</script>
+{% endblock %}

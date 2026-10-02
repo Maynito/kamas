@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics="">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Space+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+<script src="./image-slot.js"></script>
+<style>
+  body{margin:0;background:#140f09;font-family:'Archivo',sans-serif}
+  a{color:#b8791a}
+  a:hover{color:#2e7d32}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#c9b48f;border-radius:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+</style>
+</helmet>
+
+<div style="min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:36px 20px;box-sizing:border-box">
+<div style="width:min(1560px,100%);background:#241a10;background-image:linear-gradient(#34261a 1px,transparent 1px),linear-gradient(90deg,#34261a 1px,transparent 1px);background-size:24px 24px;border-radius:8px;box-shadow:0 24px 60px rgba(0,0,0,.45);overflow:hidden;display:grid;grid-template-columns:222px 1fr;min-height:900px;color:#1c150c">
+
+  <div style="background:#14100a;border-right:1px solid #090604;display:flex;flex-direction:column;padding:20px 12px;gap:4px">
+    <div style="font-family:'Space Mono',monospace;font-weight:700;font-size:18px;letter-spacing:-.02em;color:#f7f0e2;padding:6px 10px 18px">KAMAS</div>
+
+    <sc-for list="{{ navItems }}" as="item" hint-placeholder-count="9">
+      <sc-if value="{{ item.active }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ item.onClick }}" style="padding:10px 12px;border-radius:5px;font-size:13px;font-weight:700;background:#3a2a12;color:#f0b429;cursor:pointer;display:flex;align-items:center;gap:9px">{{ item.label }}</div>
+      </sc-if>
+      <sc-if value="{{ item.inactive }}" hint-placeholder-val="{{ true }}">
+        <div onClick="{{ item.onClick }}" style="padding:10px 12px;border-radius:5px;font-size:13px;font-weight:600;color:#b3a184;cursor:pointer;display:flex;align-items:center;gap:9px" style-hover="background:#201509;color:#e2ecd0">{{ item.label }}</div>
+      </sc-if>
+    </sc-for>
+
+    <div onClick="{{ toggleServerSwitch }}" style="margin-top:auto;background:#201509;border:1px solid #3a2a12;border-radius:6px;padding:10px 12px;cursor:pointer;display:flex;flex-direction:column;gap:2px">
+      <div style="font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:#9c8a6a;font-weight:700">Contexte actif</div>
+      <div style="font-size:13px;font-weight:700;color:#f7f0e2;display:flex;align-items:center;justify-content:space-between">{{ activeServer }} <span style="color:#9c8a6a">⇄</span></div>
+    </div>
+    <div style="padding:10px 12px 2px;font-size:10.5px;color:#b3a184;font-weight:600;display:flex;align-items:center;gap:7px;font-family:'Space Mono',monospace">
+      <div style="width:6px;height:6px;border-radius:50%;background:#f0b429;flex:none"></div>Watcher actif · capture {{ freshness }}
+    </div>
+  </div>
+
+  <div style="padding:26px 32px;display:flex;flex-direction:column;gap:20px;min-width:0">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:20px">
+      <div style="font-size:22px;font-weight:800;letter-spacing:-.01em;color:#f0e6d2">{{ screenTitle }}</div>
+      <div onClick="{{ openCmdk }}" style="display:flex;align-items:center;gap:8px;background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;padding:8px 14px;font-size:12px;color:#8a7a5c;font-weight:700;font-family:'Space Mono',monospace;cursor:pointer;width:280px">
+        Rechercher un objet, une page… <span style="margin-left:auto;background:#ecdfc2;padding:2px 6px;border-radius:3px;font-size:10.5px;border:1px solid #c9b48f;color:#1c150c">⌘K</span>
+      </div>
+    </div>
+
+    <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+          <div style="border:1.5px solid #c9b48f;background:#f7f0e2;border-radius:4px;padding:16px 18px">
+            <div style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#241b0f;font-weight:700">Crafts rentables</div>
+            <div style="font-family:'Space Mono',monospace;font-weight:800;font-size:44px;color:#2e7d32;margin-top:4px;line-height:1">{{ kpiCrafts }}</div>
+          </div>
+          <div style="border:1.5px solid #c9b48f;background:#f7f0e2;border-radius:4px;padding:16px 18px">
+            <div style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#241b0f;font-weight:700">Familiers rentables</div>
+            <div style="font-family:'Space Mono',monospace;font-weight:800;font-size:44px;color:#2e7d32;margin-top:4px;line-height:1">{{ kpiFamiliers }}</div>
+          </div>
+          <div style="border:1.5px solid #c9b48f;background:transparent;border-radius:4px;padding:16px 18px">
+            <div style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#c9b48f;font-weight:700">Dernière capture</div>
+            <div style="font-family:'Space Mono',monospace;font-size:16px;color:#f0e6d2;margin-top:9px;font-weight:600">{{ freshness }}</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.3fr 1fr;grid-template-rows:auto auto;gap:16px">
+          <div style="background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;padding:16px 18px;grid-row:1/3;display:flex;flex-direction:column;gap:8px;min-width:0">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <div style="font-weight:800;font-size:14px">CRAFTS LES PLUS RENTABLES</div>
+              <div onClick="{{ goToCrafts }}" style="font-size:11px;color:#7a6540;font-weight:700;cursor:pointer">tout voir →</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1.5fr .6fr 1.3fr auto;gap:10px;border-bottom:1.5px solid #ddc9a0;padding-bottom:8px;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700">
+              <span style="color:#241b0f">Objet</span><span style="color:#8a7a5c">Marge</span><span style="text-align:right;color:#2e7d32;white-space:nowrap">Bénéf. / mois</span><span></span>
+            </div>
+            <sc-for list="{{ dashCrafts }}" as="c" hint-placeholder-count="4">
+              <div style="display:grid;grid-template-columns:1.5fr .6fr 1.3fr auto;gap:10px;align-items:center;padding:6px 0" title="{{ c.tooltip }}">
+                <span style="font-weight:700;color:#1c150c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</span>
+                <span style="color:#2e7d32;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;white-space:nowrap">{{ c.margin }}</span>
+                <span style="text-align:right;font-family:'Space Mono',monospace;font-weight:800;font-size:19px;color:#2e7d32;white-space:nowrap">{{ c.monthly }}</span>
+                <button onClick="{{ c.onTrack }}" style="background:#2e7d32;color:#fbf3e2;border:none;border-radius:3px;padding:5px 10px;font-size:11px;font-weight:700;font-family:'Archivo',sans-serif;cursor:pointer">+ Suivre</button>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;padding:16px 18px;display:flex;flex-direction:column;gap:8px;min-width:0">
+            <div style="font-weight:800;font-size:14px">FAMILIERS RENTABLES</div>
+            <div style="display:grid;grid-template-columns:1.9fr .6fr 1.1fr auto;gap:10px;border-bottom:1.5px solid #ddc9a0;padding-bottom:8px;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700">
+              <span style="color:#241b0f">Familier</span><span style="color:#8a7a5c">Marge</span><span style="text-align:right;color:#2e7d32;white-space:nowrap">Bénéf. / mois</span><span></span>
+            </div>
+            <sc-for list="{{ dashFamiliers }}" as="f" hint-placeholder-count="3">
+              <div style="display:grid;grid-template-columns:1.9fr .6fr 1.1fr auto;gap:10px;align-items:center;padding:6px 0">
+                <span style="font-weight:700;color:#1c150c;white-space:nowrap">{{ f.name }}</span>
+                <span style="color:#2e7d32;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;white-space:nowrap">{{ f.margin }}</span>
+                <span style="text-align:right;font-family:'Space Mono',monospace;font-weight:800;font-size:16px;color:#2e7d32;white-space:nowrap">{{ f.monthly }}</span>
+                <button onClick="{{ f.onTrack }}" style="background:#2e7d32;color:#fbf3e2;border:none;border-radius:3px;padding:5px 10px;font-size:11px;font-weight:700;font-family:'Archivo',sans-serif;cursor:pointer">+ Suivre</button>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;padding:16px 18px;display:flex;flex-direction:column;gap:8px;min-width:0">
+            <div style="font-weight:800;font-size:14px">ACTIVITÉ RÉCENTE</div>
+            <div style="display:flex;flex-direction:column;gap:7px;font-size:12.5px;color:#241b0f;font-weight:600">
+              <sc-for list="{{ activity }}" as="a" hint-placeholder-count="4">
+                <div style="display:flex;justify-content:space-between;gap:10px"><span>{{ a.text }}</span><span style="color:#8a7a5c;font-family:'Space Mono',monospace;font-size:11px;flex:none">{{ a.time }}</span></div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isCrafts }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <input value="{{ craftsSearch }}" onChange="{{ onCraftsSearch }}" placeholder="Filtrer les crafts…" style="border:1.5px solid #c9b48f;background:#f7f0e2;border-radius:4px;padding:9px 12px;font-size:13px;font-weight:600;width:280px;font-family:'Archivo',sans-serif">
+          <div style="font-size:11.5px;color:#b3a184;font-weight:700">{{ craftsCount }} résultats</div>
+          <div style="font-size:11.5px;color:#2e7d32;font-weight:800;margin-left:auto">{{ craftsPossibleCount }} crafts réalisables dès maintenant</div>
+        </div>
+        <div style="background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;overflow:hidden">
+          <div style="display:grid;grid-template-columns:1.5fr .9fr .9fr .7fr .8fr 1.2fr auto;gap:10px;padding:11px 16px;border-bottom:1.5px solid #ddc9a0;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700">
+            <span onClick="{{ craftsSort.name }}" style="color:#241b0f;cursor:pointer">Objet</span>
+            <span onClick="{{ craftsSort.cost }}" style="color:#8a7a5c;cursor:pointer">Coût craft</span>
+            <span onClick="{{ craftsSort.price }}" style="color:#8a7a5c;cursor:pointer">Prix vente</span>
+            <span onClick="{{ craftsSort.marginUnit }}" style="color:#8a7a5c;cursor:pointer">Marge/u</span>
+            <span onClick="{{ craftsSort.volume }}" style="color:#8a7a5c;cursor:pointer">Vol./mois</span>
+            <span onClick="{{ craftsSort.monthly }}" style="text-align:right;color:#2e7d32;cursor:pointer;white-space:nowrap">Bénéf. / mois {{ craftsSortArrow }}</span>
+            <span></span>
+          </div>
+          <sc-for list="{{ craftsList }}" as="c" hint-placeholder-count="8">
+            <div style="display:grid;grid-template-columns:1.5fr .9fr .9fr .7fr .8fr 1.2fr auto;gap:10px;align-items:center;padding:11px 16px;border-bottom:1px solid #ecdfc2">
+              <span style="font-weight:700;color:#1c150c;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                {{ c.name }}
+                <sc-if value="{{ c.hasMissing }}" hint-placeholder-val="{{ false }}"><span style="color:#a3271a;font-size:12px;cursor:default" title="{{ c.tooltip }}">⚠</span></sc-if>
+              </span>
+              <span style="font-family:'Space Mono',monospace;font-size:12.5px;color:#b8791a;font-weight:600;white-space:nowrap">{{ c.cost }}</span>
+              <span style="font-family:'Space Mono',monospace;font-size:12.5px;color:#b8791a;font-weight:600;white-space:nowrap">{{ c.price }}</span>
+              <span style="font-family:'Space Mono',monospace;font-size:12.5px;color:#b8791a;font-weight:600;white-space:nowrap">{{ c.marginUnit }}</span>
+              <span style="font-family:'Space Mono',monospace;font-size:12.5px;color:#8a7a5c;font-weight:600;white-space:nowrap">{{ c.volume }}</span>
+              <span style="text-align:right;font-family:'Space Mono',monospace;font-weight:800;font-size:19px;color:#2e7d32;white-space:nowrap">{{ c.monthly }}</span>
+              <button onClick="{{ c.onTrack }}" style="background:#2e7d32;color:#fbf3e2;border:none;border-radius:3px;padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">+ Suivre</button>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+          <div style="font-weight:800;font-size:14px;color:#f0e6d2">RECETTES INCOMPLÈTES</div>
+          <div style="font-size:11.5px;color:#b3a184;font-weight:600">Recettes dont une ressource manque encore un prix référencé, ou dont on ne possède pas assez de quantité.</div>
+        </div>
+        <div style="background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;overflow:hidden">
+          <div style="display:grid;grid-template-columns:1.4fr 1.4fr .6fr 1.4fr;gap:10px;padding:11px 16px;border-bottom:1.5px solid #ddc9a0;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700">
+            <span onClick="{{ incompleteSort.item }}" style="color:#241b0f;cursor:pointer">Objet à craft</span>
+            <span onClick="{{ incompleteSort.resource }}" style="color:#8a7a5c;cursor:pointer">Ressource</span>
+            <span style="color:#8a7a5c;text-align:center">Qté</span>
+            <span onClick="{{ incompleteSort.status }}" style="color:#8a7a5c;cursor:pointer">Raison</span>
+          </div>
+          <sc-for list="{{ incompleteList }}" as="r" hint-placeholder-count="6">
+            <div style="display:grid;grid-template-columns:1.4fr 1.4fr .6fr 1.4fr;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid #ecdfc2">
+              <span style="font-weight:700;color:#1c150c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.item }}</span>
+              <span style="display:inline-flex;align-items:center;gap:8px;padding:4px 10px;border-radius:3px;width:fit-content;font-weight:700;font-size:12.5px;background:{{ r.bg }};color:{{ r.fg }}">
+                {{ r.resource }}
+                <span style="font-family:'Space Mono',monospace;font-size:11px;background:rgba(0,0,0,.12);border-radius:8px;padding:1px 7px">x{{ r.qty }}</span>
+              </span>
+              <span></span>
+              <span style="font-size:12px;font-weight:700;color:{{ r.fg }}">{{ r.reason }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isFamiliers }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <input value="{{ familiersSearch }}" onChange="{{ onFamiliersSearch }}" placeholder="Filtrer les familiers…" style="border:1.5px solid #c9b48f;background:#f7f0e2;border-radius:4px;padding:9px 12px;font-size:13px;font-weight:600;width:280px;font-family:'Archivo',sans-serif">
+        </div>
+        <div style="background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;overflow:hidden">
+          <div style="display:grid;grid-template-columns:1.7fr 1fr 1fr .8fr 1.2fr auto;gap:10px;padding:11px 16px;border-bottom:1.5px solid #ddc9a0;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700">
+            <span style="color:#241b0f">Familier</span><span style="color:#8a7a5c">Coût</span><span style="color:#8a7a5c">Prix vente</span><span style="color:#8a7a5c">Vol./mois</span><span style="text-align:right;color:#2e7d32;white-space:nowrap">Bénéf. / mois</span><span></span>
+          </div>
+          <sc-for list="{{ familiersList }}" as="f" hint-placeholder-count="6">
+            <div style="display:grid;grid-template-columns:1.7fr 1fr 1fr .8fr 1.2fr auto;gap:10px;align-items:center;padding:11px 16px;border-bottom:1px solid #ecdfc2">
+              <span style="font-weight:700;color:#1c150c;white-space:nowrap">{{ f.name }}</span>
+              <span style="font-family:'Space Mono',monospace;font-size:12.5px;color:#b8791a;font-weight:600;white-space:nowrap">{{ f.cost }}</span>
+              <span style="font-family:'Space Mono',monospace;font-size:12.5px;color:#b8791a;font-weight:600;white-space:nowrap">{{ f.price }}</span>
+              <span style="font-family:'Space Mono',monospace;font-size:12.5px;color:#8a7a5c;font-weight:600;white-space:nowrap">{{ f.volume }}</span>
+              <span style="text-align:right;font-family:'Space Mono',monospace;font-weight:800;font-size:19px;color:#2e7d32;white-space:nowrap">{{ f.monthly }}</span>
+              <button onClick="{{ f.onTrack }}" style="background:#2e7d32;color:#fbf3e2;border:none;border-radius:3px;padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">+ Suivre</button>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+          <div style="font-weight:800;font-size:14px;color:#f0e6d2">EN ATTENTE DE RÉFÉRENCEMENT</div>
+          <div style="font-size:11.5px;color:#b3a184;font-weight:600">Familiers repérés mais pas encore assez de données pour estimer leur rentabilité.</div>
+        </div>
+        <div style="background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;overflow:hidden">
+          <div style="display:grid;grid-template-columns:1.7fr 1fr 1fr .8fr 1.2fr auto;gap:10px;padding:11px 16px;border-bottom:1.5px solid #ddc9a0;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700">
+            <span style="color:#241b0f">Familier</span><span style="color:#8a7a5c">Coût</span><span style="color:#8a7a5c">Prix vente</span><span style="color:#8a7a5c">Vol./mois</span><span style="color:#a3271a">Raison</span><span></span>
+          </div>
+          <sc-for list="{{ familiersPending }}" as="f" hint-placeholder-count="3">
+            <div style="display:grid;grid-template-columns:1.7fr 1fr 1fr .8fr 1.2fr auto;gap:10px;align-items:center;padding:11px 16px;border-bottom:1px solid #ecdfc2">
+              <span style="font-weight:700;color:#1c150c;white-space:nowrap">{{ f.name }}</span>
+              <span style="font-family:'Space Mono',monospace;font-size:12.5px;color:#b8791a;font-weight:600;white-space:nowrap">{{ f.cost }}</span>
+              <span style="font-family:'Space Mono',monospace;font-size:12.5px;color:#b8791a;font-weight:600;white-space:nowrap">{{ f.price }}</span>
+              <span style="font-family:'Space Mono',monospace;font-size:12.5px;color:#8a7a5c;font-weight:600;white-space:nowrap">{{ f.volume }}</span>
+              <span style="font-size:12px;font-weight:700;color:#a3271a;background:#f0d6cf;padding:3px 9px;border-radius:9px;width:fit-content;white-space:nowrap">{{ f.reason }}</span>
+              <span></span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isPrix }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="display:flex;background:#ecdfc2;border:1.5px solid #c9b48f;border-radius:6px;padding:3px;gap:2px">
+            <sc-for list="{{ prixTabs }}" as="t" hint-placeholder-count="3">
+              <sc-if value="{{ t.active }}" hint-placeholder-val="{{ false }}">
+                <div onClick="{{ t.onClick }}" style="padding:8px 16px;border-radius:4px;font-size:12.5px;font-weight:700;background:#2e7d32;color:#fbf3e2;cursor:pointer">{{ t.label }}</div>
+              </sc-if>
+              <sc-if value="{{ t.inactive }}" hint-placeholder-val="{{ true }}">
+                <div onClick="{{ t.onClick }}" style="padding:8px 16px;border-radius:4px;font-size:12.5px;font-weight:700;color:#7a6540;cursor:pointer">{{ t.label }}</div>
+              </sc-if>
+            </sc-for>
+          </div>
+          <input value="{{ prixSearch }}" onChange="{{ onPrixSearch }}" placeholder="Filtrer les objets…" style="border:1.5px solid #c9b48f;background:#f7f0e2;border-radius:4px;padding:9px 12px;font-size:13px;font-weight:600;width:260px;font-family:'Archivo',sans-serif">
+          <div style="margin-left:auto;font-size:11px;color:#b3a184;font-weight:700;display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:#b8791a;display:inline-block"></span>Mise à jour auto</div>
+        </div>
+        <div style="background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;overflow:hidden">
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;padding:11px 16px;border-bottom:1.5px solid #ddc9a0;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700">
+            <span style="color:#241b0f">Objet</span><span style="text-align:right;color:#241b0f">Dernier prix</span><span style="text-align:right;color:#8a7a5c">Capturé</span>
+          </div>
+          <sc-for list="{{ prixList }}" as="p" hint-placeholder-count="6">
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;align-items:center;padding:11px 16px;border-bottom:1px solid #ecdfc2">
+              <span style="font-weight:700;color:#1c150c">{{ p.name }}</span>
+              <span style="text-align:right;font-family:'Space Mono',monospace;font-weight:700;font-size:14.5px;color:#b8791a">{{ p.price }}</span>
+              <span style="text-align:right;font-family:'Space Mono',monospace;font-size:11.5px;color:#8a7a5c;font-weight:600">{{ p.updated }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ prixHasMore }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ onPrixShowMore }}" style="align-self:center;background:transparent;border:1.5px solid #c9b48f;border-radius:4px;padding:9px 20px;font-size:12.5px;font-weight:700;cursor:pointer;color:#f0e6d2">Afficher plus</button>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isHistorique }}" hint-placeholder-val="{{ false }}">
+      <div style="display:grid;grid-template-columns:260px 1fr;gap:18px;min-height:0">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;background:#ecdfc2;border:1.5px solid #c9b48f;border-radius:6px;padding:3px;gap:2px">
+            <sc-for list="{{ histTabs }}" as="t" hint-placeholder-count="3">
+              <sc-if value="{{ t.active }}" hint-placeholder-val="{{ false }}">
+                <div onClick="{{ t.onClick }}" style="flex:1;text-align:center;padding:7px 6px;border-radius:4px;font-size:11.5px;font-weight:700;background:#2e7d32;color:#fbf3e2;cursor:pointer">{{ t.label }}</div>
+              </sc-if>
+              <sc-if value="{{ t.inactive }}" hint-placeholder-val="{{ true }}">
+                <div onClick="{{ t.onClick }}" style="flex:1;text-align:center;padding:7px 6px;border-radius:4px;font-size:11.5px;font-weight:700;color:#7a6540;cursor:pointer">{{ t.label }}</div>
+              </sc-if>
+            </sc-for>
+          </div>
+          <input value="{{ histSearch }}" onChange="{{ onHistSearch }}" placeholder="Rechercher un objet…" style="border:1.5px solid #c9b48f;background:#f7f0e2;border-radius:4px;padding:9px 12px;font-size:13px;font-weight:600;font-family:'Archivo',sans-serif">
+          <div style="display:flex;flex-direction:column;gap:2px;background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;overflow:hidden">
+            <sc-for list="{{ histObjects }}" as="o" hint-placeholder-count="6">
+              <sc-if value="{{ o.active }}" hint-placeholder-val="{{ false }}">
+                <div onClick="{{ o.onClick }}" style="padding:10px 12px;font-size:13px;font-weight:700;background:#3a2a12;color:#f0b429;cursor:pointer">{{ o.name }}</div>
+              </sc-if>
+              <sc-if value="{{ o.inactive }}" hint-placeholder-val="{{ true }}">
+                <div onClick="{{ o.onClick }}" style="padding:10px 12px;font-size:13px;font-weight:600;color:#241b0f;cursor:pointer;border-top:1px solid #ecdfc2" style-hover="background:#ecdfc2">{{ o.name }}</div>
+              </sc-if>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+          <div style="font-size:19px;font-weight:800;color:#f0e6d2">{{ histSelected }}</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+            <div style="border:1.5px solid #c9b48f;background:#f7f0e2;border-radius:4px;padding:14px 16px">
+              <div style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#8a7a5c;font-weight:700">Cours médian</div>
+              <div style="font-family:'Space Mono',monospace;font-weight:800;font-size:24px;color:#b8791a;margin-top:5px">1 240 K</div>
+            </div>
+            <div style="border:1.5px solid #c9b48f;background:#f7f0e2;border-radius:4px;padding:14px 16px">
+              <div style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#8a7a5c;font-weight:700">Cours moyen</div>
+              <div style="font-family:'Space Mono',monospace;font-weight:800;font-size:24px;color:#b8791a;margin-top:5px">1 310 K</div>
+            </div>
+            <div style="border:1.5px solid #c9b48f;background:#f7f0e2;border-radius:4px;padding:14px 16px">
+              <div style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#8a7a5c;font-weight:700">Vendus / semaine</div>
+              <div style="font-family:'Space Mono',monospace;font-weight:800;font-size:24px;color:#2e7d32;margin-top:5px">37</div>
+            </div>
+          </div>
+
+          <sc-if value="{{ histIsRessource }}" hint-placeholder-val="{{ true }}">
+            <div style="background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;padding:14px 16px;display:flex;flex-direction:column;gap:8px">
+              <div style="font-weight:800;font-size:13px">PRIX PAR LOT + XP FAMILIER</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;border-bottom:1.5px solid #ddc9a0;padding-bottom:7px;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:#8a7a5c">
+                <span>Lot</span><span style="text-align:right">Prix</span><span style="text-align:right">XP donné</span><span style="text-align:right">Modifier</span>
+              </div>
+              <sc-for list="{{ histLots }}" as="h" hint-placeholder-count="4">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;align-items:center;padding:7px 0;font-size:12.5px;font-weight:600;color:#241b0f">
+                  <span>{{ h.lot }}</span><span style="text-align:right;font-family:'Space Mono',monospace;color:#b8791a;font-weight:700">{{ h.price }}</span><span style="text-align:right;font-family:'Space Mono',monospace;color:#8a7a5c">{{ h.xp }}</span>
+                  <button onClick="{{ h.onEdit }}" style="justify-self:end;background:transparent;border:1.5px solid #c9b48f;border-radius:3px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;color:#241b0f">Modifier</button>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ histIsFamilier }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;padding:14px 16px;display:flex;flex-direction:column;gap:8px">
+              <div style="font-weight:800;font-size:13px">PRIX PAR NIVEAU</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;border-bottom:1.5px solid #ddc9a0;padding-bottom:7px;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:#8a7a5c">
+                <span>Niveau</span><span style="text-align:right">Prix</span><span style="text-align:right">Modifier</span>
+              </div>
+              <sc-for list="{{ histLevels }}" as="h" hint-placeholder-count="2">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:center;padding:7px 0;font-size:12.5px;font-weight:600;color:#241b0f">
+                  <span>{{ h.lot }}</span><span style="text-align:right;font-family:'Space Mono',monospace;color:#b8791a;font-weight:700">{{ h.price }}</span>
+                  <button onClick="{{ h.onEdit }}" style="justify-self:end;background:transparent;border:1.5px solid #c9b48f;border-radius:3px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;color:#241b0f">Modifier</button>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ histIsEquipement }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <div style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#8a7a5c;font-weight:700">Dernier prix</div>
+                <div style="font-family:'Space Mono',monospace;font-weight:800;font-size:22px;color:#b8791a;margin-top:5px">{{ histEquipPrice }}</div>
+              </div>
+              <button onClick="{{ onEditEquip }}" style="background:transparent;border:1.5px solid #c9b48f;border-radius:4px;padding:8px 16px;font-size:12.5px;font-weight:700;cursor:pointer;color:#241b0f">Modifier</button>
+            </div>
+          </sc-if>
+
+          <div style="background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;padding:14px 16px;display:flex;gap:16px">
+            <label style="font-size:11.5px;font-weight:700;color:#241b0f;flex:1">Nouveau prix (kamas)<input value="{{ manualPrice }}" onChange="{{ onManualPriceChange }}" placeholder="ex : 1250" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;border:1.5px solid #c9b48f;border-radius:4px;padding:8px 10px;font-size:13px;font-family:'Space Mono',monospace"></label>
+            <sc-if value="{{ histIsRessource }}" hint-placeholder-val="{{ true }}">
+              <label style="font-size:11.5px;font-weight:700;color:#241b0f;flex:1">XP obtenu<input value="{{ manualXp }}" onChange="{{ onManualXpChange }}" placeholder="ex : 4200" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;border:1.5px solid #c9b48f;border-radius:4px;padding:8px 10px;font-size:13px;font-family:'Space Mono',monospace"></label>
+            </sc-if>
+            <button onClick="{{ onSaveManual }}" style="align-self:flex-end;background:#2e7d32;color:#fbf3e2;border:none;border-radius:4px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer">Enregistrer</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isSuivis }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+          <div style="border:1.5px solid #c9b48f;background:#f7f0e2;border-radius:4px;padding:14px 16px">
+            <div style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#8a7a5c;font-weight:700">Bénéfice total</div>
+            <div style="font-family:'Space Mono',monospace;font-weight:800;font-size:26px;color:#2e7d32;margin-top:5px">38 940 K</div>
+          </div>
+          <div style="border:1.5px solid #c9b48f;background:#f7f0e2;border-radius:4px;padding:14px 16px">
+            <div style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#8a7a5c;font-weight:700">ROI global</div>
+            <div style="font-family:'Space Mono',monospace;font-weight:800;font-size:26px;color:#2e7d32;margin-top:5px">+22%</div>
+          </div>
+          <div style="border:1.5px solid #c9b48f;background:#f7f0e2;border-radius:4px;padding:14px 16px">
+            <div style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#8a7a5c;font-weight:700">En cours</div>
+            <div style="font-family:'Space Mono',monospace;font-weight:800;font-size:26px;color:#241b0f;margin-top:5px">5</div>
+          </div>
+          <div style="border:1.5px solid #c9b48f;background:#f7f0e2;border-radius:4px;padding:14px 16px">
+            <div style="font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#8a7a5c;font-weight:700">Vendus</div>
+            <div style="font-family:'Space Mono',monospace;font-weight:800;font-size:26px;color:#241b0f;margin-top:5px">21</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="display:flex;background:#ecdfc2;border:1.5px solid #c9b48f;border-radius:6px;padding:3px;gap:2px">
+            <sc-for list="{{ suivisTabs }}" as="t" hint-placeholder-count="3">
+              <sc-if value="{{ t.active }}" hint-placeholder-val="{{ false }}">
+                <div onClick="{{ t.onClick }}" style="padding:8px 16px;border-radius:4px;font-size:12.5px;font-weight:700;background:#2e7d32;color:#fbf3e2;cursor:pointer">{{ t.label }}</div>
+              </sc-if>
+              <sc-if value="{{ t.inactive }}" hint-placeholder-val="{{ true }}">
+                <div onClick="{{ t.onClick }}" style="padding:8px 16px;border-radius:4px;font-size:12.5px;font-weight:700;color:#7a6540;cursor:pointer">{{ t.label }}</div>
+              </sc-if>
+            </sc-for>
+          </div>
+          <input value="{{ suivisSearch }}" onChange="{{ onSuivisSearch }}" placeholder="Filtrer…" style="border:1.5px solid #c9b48f;background:#f7f0e2;border-radius:4px;padding:9px 12px;font-size:13px;font-weight:600;width:260px;font-family:'Archivo',sans-serif">
+        </div>
+        <div style="background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;overflow:hidden">
+          <div style="display:grid;grid-template-columns:1.6fr .6fr 1fr 1fr 1fr .8fr .9fr;gap:10px;padding:11px 16px;border-bottom:1.5px solid #ddc9a0;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700">
+            <span onClick="{{ suivisSort.name }}" style="color:#241b0f;cursor:pointer">Objet</span>
+            <span style="color:#8a7a5c">Qté</span><span style="color:#8a7a5c">Payé</span><span style="color:#8a7a5c">Vente</span>
+            <span onClick="{{ suivisSort.profit }}" style="text-align:right;color:#2e7d32;cursor:pointer">Bénéfice</span>
+            <span onClick="{{ suivisSort.roi }}" style="text-align:right;color:#2e7d32;cursor:pointer">ROI</span>
+            <span style="text-align:right;color:#8a7a5c">Statut</span>
+          </div>
+          <sc-for list="{{ suivisList }}" as="v" hint-placeholder-count="6">
+            <div style="display:grid;grid-template-columns:1.6fr .6fr 1fr 1fr 1fr .8fr .9fr;gap:10px;align-items:center;padding:11px 16px;border-bottom:1px solid #ecdfc2">
+              <span style="font-weight:700;color:#1c150c">{{ v.name }}</span>
+              <span style="font-family: 'Space Mono',monospace; font-size: 12.5px; color: #8a7a5c; font-weight: 700">{{ v.qty }}</span>
+              <span style="font-family: 'Space Mono',monospace; font-size: 12.5px; color: #b8791a; font-weight: 700">{{ v.paid }}</span>
+              <span style="font-family: 'Space Mono',monospace; font-size: 12.5px; color: #b8791a; font-weight: 700">{{ v.sold }}</span>
+              <span style="text-align:right;font-family:'Space Mono',monospace;font-weight:800;font-size:16px;color:#2e7d32">{{ v.profit }}</span>
+              <span style="text-align:right;font-family:'Space Mono',monospace;font-weight:700;font-size:13px;color:#2e7d32">{{ v.roi }}</span>
+              <span style="text-align:right;font-size:11px;font-weight:700">
+                <sc-if value="{{ v.isEnCours }}" hint-placeholder-val="{{ false }}"><span style="background:#cfe3e8;color:#1f5a66;padding:3px 9px;border-radius:9px">En cours</span></sc-if>
+                <sc-if value="{{ v.isVendu }}" hint-placeholder-val="{{ true }}"><span style="background:#dcead9;color:#2e7d32;padding:3px 9px;border-radius:9px">Vendu</span></sc-if>
+              </span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isServeurs }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:14px;max-width:640px">
+        <sc-for list="{{ serveursList }}" as="s" hint-placeholder-count="3">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;padding:16px 18px">
+            <sc-if value="{{ s.editing }}" hint-placeholder-val="{{ false }}">
+              <input value="{{ s.editValue }}" onChange="{{ s.onEditChange }}" style="flex:1;border:1.5px solid #c9b48f;background:#fff;border-radius:4px;padding:8px 10px;font-size:14px;font-weight:700;font-family:'Archivo',sans-serif">
+            </sc-if>
+            <sc-if value="{{ s.notEditing }}" hint-placeholder-val="{{ true }}">
+              <div style="flex:1">
+                <div style="font-weight:800;font-size:15px">{{ s.name }}</div>
+                <div style="font-size:11.5px;color:#8a7a5c;font-weight:600;margin-top:2px">{{ s.meta }}</div>
+              </div>
+            </sc-if>
+            <div style="display:flex;align-items:center;gap:8px">
+              <sc-if value="{{ s.active }}" hint-placeholder-val="{{ false }}"><span style="background:#2e7d32;color:#fbf3e2;padding:7px 14px;border-radius:4px;font-size:12px;font-weight:700">Actif</span></sc-if>
+              <sc-if value="{{ s.inactive }}" hint-placeholder-val="{{ true }}"><button onClick="{{ s.onActivate }}" style="background:transparent;border:1.5px solid #c9b48f;border-radius:4px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;color:#241b0f">Activer</button></sc-if>
+              <sc-if value="{{ s.editing }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ s.onSaveEdit }}" style="background:#2e7d32;color:#fbf3e2;border:none;border-radius:4px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer">Valider</button>
+              </sc-if>
+              <sc-if value="{{ s.notEditing }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ s.onStartEdit }}" style="background:transparent;border:1.5px solid #c9b48f;border-radius:4px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;color:#241b0f">Renommer</button>
+              </sc-if>
+              <button onClick="{{ s.onDelete }}" style="background:transparent;border:1.5px solid #c9b48f;border-radius:4px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;color:#a3271a">Supprimer</button>
+            </div>
+          </div>
+        </sc-for>
+        <div style="display:flex;gap:10px">
+          <input value="{{ newServerName }}" onChange="{{ onNewServerChange }}" placeholder="Nom du nouveau contexte…" style="flex:1;border:1.5px solid #c9b48f;background:#f7f0e2;border-radius:4px;padding:10px 12px;font-size:13px;font-weight:600;font-family:'Archivo',sans-serif">
+          <button onClick="{{ onAddServer }}" style="background:#2e7d32;color:#fbf3e2;border:none;border-radius:4px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer">+ Créer</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isReglages }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:16px;max-width:520px">
+        <div style="background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+          <div style="font-weight:800;font-size:14px">Marge de sécurité</div>
+          <div style="font-size:12px;color:#8a7a5c;font-weight:600">Réduit le bénéfice estimé pour absorber la volatilité des prix.</div>
+          <div style="display:flex;align-items:center;gap:14px">
+            <input type="range" min="0" max="30" value="{{ marginSafety }}" onChange="{{ onMarginChange }}" style="flex:1;accent-color:#2e7d32">
+            <div style="font-family:'Space Mono',monospace;font-weight:800;font-size:18px;color:#2e7d32;width:52px;text-align:right">{{ marginSafety }}%</div>
+          </div>
+        </div>
+        <div style="background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;padding:18px 20px;display:flex;flex-direction:column;gap:6px">
+          <div style="font-weight:800;font-size:14px">Taxe HDV</div>
+          <div style="font-size:12px;color:#8a7a5c;font-weight:600">Fixée par le jeu, non modifiable.</div>
+          <div style="font-family:'Space Mono',monospace;font-weight:800;font-size:22px;color:#241b0f;margin-top:6px">2%</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isImport }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:16px;max-width:640px">
+        <div style="font-size:12.5px;color:#b3a184;font-weight:600">Dépose une capture d'écran du jeu en secours si le watcher automatique rate un prix.</div>
+        <div style="width:100%;height:280px;border:1.5px dashed #c9b48f;border-radius:6px;overflow:hidden">
+          <image-slot id="import-screenshot" shape="rect" placeholder="Dépose une capture d'écran (HDV, craft, familier…)"></image-slot>
+        </div>
+        <div style="background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:4px;padding:14px 16px">
+          <div style="font-weight:800;font-size:13px;margin-bottom:8px">IMPORTS RÉCENTS</div>
+          <div style="display:flex;flex-direction:column;gap:6px;font-size:12.5px;font-weight:600;color:#241b0f">
+            <div style="display:flex;justify-content:space-between"><span>Objet A · capture manuelle</span><span style="color:#8a7a5c;font-family:'Space Mono',monospace;font-size:11px">hier, 21:40</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Familier B · capture manuelle</span><span style="color:#8a7a5c;font-family:'Space Mono',monospace;font-size:11px">avant-hier, 19:12</span></div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+</div>
+
+<sc-if value="{{ cmdkOpen }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ closeCmdk }}" style="position:fixed;inset:0;background:rgba(10,13,5,.55);display:flex;align-items:flex-start;justify-content:center;padding-top:120px;z-index:50">
+    <div onClick="{{ stop }}" style="width:min(640px,90vw);background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:8px;box-shadow:0 30px 70px rgba(0,0,0,.5);overflow:hidden">
+      <div style="padding:16px 18px;border-bottom:1.5px solid #ddc9a0;display:flex;align-items:center;gap:10px">
+        <span style="color:#8a7a5c;font-family:'Space Mono',monospace">⌘K</span>
+        <input autoFocus="{{ true }}" value="{{ cmdkQuery }}" onChange="{{ onCmdkChange }}" placeholder="Objet, page, action…" style="border:none;outline:none;background:transparent;font-size:15px;font-weight:600;color:#1c150c;flex:1;font-family:'Archivo',sans-serif">
+      </div>
+      <div style="max-height:360px;overflow:auto;padding:8px">
+        <sc-for list="{{ cmdkResults }}" as="r" hint-placeholder-count="5">
+          <div onClick="{{ r.onSelect }}" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:5px;cursor:pointer;font-size:13.5px;font-weight:600" style-hover="background:#ecdfc2">
+            <span>{{ r.label }}</span>
+            <span style="font-size:11px;color:#8a7a5c;font-family:'Space Mono',monospace;font-weight:700">{{ r.hint }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ trackOpen }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ closeTrack }}" style="position:fixed;inset:0;background:rgba(10,13,5,.55);display:flex;align-items:center;justify-content:center;z-index:50">
+    <div onClick="{{ stop }}" style="width:min(460px,90vw);background:#f7f0e2;border:1.5px solid #c9b48f;border-radius:8px;box-shadow:0 30px 70px rgba(0,0,0,.5);padding:22px 24px;display:flex;flex-direction:column;gap:14px">
+      <div style="font-size:17px;font-weight:800">Suivre « {{ trackItem.name }} »</div>
+      <div style="font-size:12.5px;color:#8a7a5c;font-weight:600;background:#ecdfc2;border-radius:4px;padding:8px 10px">Prix suggéré : <b style="color:#1c150c">{{ trackItem.suggested }}</b> — {{ trackItem.source }}</div>
+      <label style="font-size:11.5px;font-weight:700;color:#241b0f">Quantité<input value="{{ trackQty }}" onChange="{{ onTrackQtyChange }}" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;border:1.5px solid #c9b48f;border-radius:4px;padding:8px 10px;font-size:13px;font-family:'Space Mono',monospace"></label>
+      <label style="font-size:11.5px;font-weight:700;color:#241b0f">Prix payé (kamas)<input value="{{ trackPrice }}" onChange="{{ onTrackPriceChange }}" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;border:1.5px solid #c9b48f;border-radius:4px;padding:8px 10px;font-size:13px;font-family:'Space Mono',monospace"></label>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:6px">
+        <button onClick="{{ closeTrack }}" style="background:transparent;border:1.5px solid #c9b48f;border-radius:4px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;color:#241b0f">Annuler</button>
+        <button onClick="{{ confirmTrack }}" style="background:#2e7d32;color:#fbf3e2;border:none;border-radius:4px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer">Confirmer le suivi</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ toastVisible }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#1c150c;color:#fbf3e2;padding:12px 20px;border-radius:6px;font-size:13.5px;font-weight:700;box-shadow:0 12px 30px rgba(0,0,0,.4);z-index:60">{{ toastMessage }}</div>
+</sc-if>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    screen: 'dashboard',
+    cmdkOpen: false, cmdkQuery: '',
+    trackOpen: false, trackItem: null, trackQty: '1', trackPrice: '',
+    toastVisible: false, toastMessage: '',
+    craftsSearch: '', craftsSortKey: 'monthly', craftsSortDir: 'desc',
+    incompleteSortKey: 'item', incompleteSortDir: 'asc',
+    familiersSearch: '',
+    prixCategory: 'ressources', prixSearch: '', prixLimit: 5,
+    histCategory: 'ressources', histSearch: '', histSelected: 'Laine',
+    manualPrice: '', manualXp: '',
+    suivisFilter: 'tous', suivisSearch: '', suivisSortKey: 'profit', suivisSortDir: 'desc',
+    marginSafety: 12,
+    servers: [{ name: 'Compte principal', meta: '2 personnages · créé il y a 4 mois', active: true }, { name: 'Compte secondaire', meta: '1 personnage · créé il y a 2 mois', active: false }],
+    editingServerIndex: -1, editServerValue: '', newServerName: '',
+  };
+
+  componentDidMount() {
+    this._onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); this.setState({ cmdkOpen: true }); }
+      if (e.key === 'Escape') this.setState({ cmdkOpen: false, trackOpen: false });
+    };
+    window.addEventListener('keydown', this._onKey);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this._onKey); }
+
+  goTo(id) { this.setState({ screen: id, cmdkOpen: false }); }
+  openTrack(item) { this.setState({ trackOpen: true, trackItem: item, trackQty: '1', trackPrice: String(item.suggestedRaw || '') }); }
+  showToast(msg) {
+    this.setState({ toastVisible: true, toastMessage: msg });
+    clearTimeout(this._toastT);
+    this._toastT = setTimeout(() => this.setState({ toastVisible: false }), 2400);
+  }
+
+  renderVals() {
+    const s = this.state;
+    const NAV = [
+      ['dashboard', 'Dashboard'], ['crafts', 'Crafts'], ['familiers', 'Familiers'],
+      ['prix', 'Prix'], ['historique', 'Historique'], ['suivis', 'Suivis'],
+      ['serveurs', 'Serveurs'], ['reglages', 'Réglages'], ['import', 'Import'],
+    ];
+    const navItems = NAV.map(([id, label]) => ({
+      label, active: s.screen === id, inactive: s.screen !== id, onClick: () => this.goTo(id),
+    }));
+    const TITLES = {
+      dashboard: 'Tableau de bord', crafts: 'Crafts', familiers: 'Familiers', prix: 'Prix',
+      historique: 'Historique', suivis: 'Suivis', serveurs: 'Serveurs', reglages: 'Réglages', import: 'Import manuel',
+    };
+
+    const dashCraftsRaw = [
+      { name: 'Objet A', margin: '+18%', monthly: '12 480 K', tooltip: 'Manque : Laine (x4), Bois sacré (x2)' },
+      { name: 'Objet B', margin: '+11%', monthly: '9 120 K', tooltip: '' },
+      { name: 'Objet C', margin: '+9%', monthly: '7 640 K', tooltip: 'Manque : Ecorce (x1)' },
+      { name: 'Objet D', margin: '+6%', monthly: '5 210 K', tooltip: '' },
+    ];
+    const dashCrafts = dashCraftsRaw.map(c => ({ ...c, onTrack: () => this.openTrack({ name: c.name, suggested: c.monthly.split(' / ')[0] + ' (prix craft moyen)', suggestedRaw: 1200, source: 'Suggéré depuis le prix médian HDV' }) }));
+    const dashFamiliersRaw = [
+      { name: 'Familier A', margin: '+31%', monthly: '4 300 K' },
+      { name: 'Familier B', margin: '+22%', monthly: '2 980 K' },
+      { name: 'Familier C', margin: '+14%', monthly: '1 640 K' },
+    ];
+    const dashFamiliers = dashFamiliersRaw.map(f => ({ ...f, onTrack: () => this.openTrack({ name: f.name, suggested: f.monthly, suggestedRaw: 900, source: 'Suggéré depuis le dernier prix capturé' }) }));
+
+    const activity = [
+      { text: 'Objet A vendu · +2 340 K', time: 'il y a 3 min' },
+      { text: 'Prix Objet F capturé', time: 'il y a 8 min' },
+      { text: 'Familier B suivi', time: 'il y a 22 min' },
+      { text: 'Objet C craft ajouté au suivi', time: 'il y a 1 h' },
+    ];
+
+    const allObjects = ['Objet A', 'Objet B', 'Objet C', 'Objet D', 'Familier A', 'Familier B'];
+    const cmdkQuery = s.cmdkQuery.toLowerCase();
+    const cmdkResults = (cmdkQuery
+      ? allObjects.filter(o => o.toLowerCase().includes(cmdkQuery))
+      : allObjects
+    ).slice(0, 6).map(o => ({ label: o, hint: 'objet', onSelect: () => this.setState({ screen: 'historique', cmdkOpen: false }) }))
+    .concat(NAV.filter(([, l]) => !cmdkQuery || l.toLowerCase().includes(cmdkQuery)).map(([id, label]) => ({ label, hint: 'page', onSelect: () => this.goTo(id) })));
+
+    const CRAFTS_RAW = [
+      { name: 'Objet A', cost: '3 200 K', price: '9 800 K', marginUnit: '620 K', volume: '20/mois', monthly: 12480, hasMissing: true, tooltip: 'Manque : Laine (x4), Bois sacré (x2)' },
+      { name: 'Objet B', cost: '2 100 K', price: '5 400 K', marginUnit: '380 K', volume: '24/mois', monthly: 9120, hasMissing: false, tooltip: '' },
+      { name: 'Objet C', cost: '4 600 K', price: '11 200 K', marginUnit: '520 K', volume: '14/mois', monthly: 7640, hasMissing: true, tooltip: 'Manque : Ecorce (x1)' },
+      { name: 'Objet D', cost: '1 800 K', price: '4 100 K', marginUnit: '290 K', volume: '18/mois', monthly: 5210, hasMissing: false, tooltip: '' },
+      { name: 'Objet E', cost: '5 900 K', price: '13 100 K', marginUnit: '610 K', volume: '7/mois', monthly: 4270, hasMissing: false, tooltip: '' },
+      { name: 'Objet F', cost: '900 K', price: '2 300 K', marginUnit: '140 K', volume: '26/mois', monthly: 3640, hasMissing: true, tooltip: 'Manque : Plume corbac (x6)' },
+      { name: 'Objet G', cost: '3 400 K', price: '6 900 K', marginUnit: '350 K', volume: '9/mois', monthly: 3150, hasMissing: false, tooltip: '' },
+      { name: 'Objet H', cost: '2 700 K', price: '5 100 K', marginUnit: '240 K', volume: '11/mois', monthly: 2640, hasMissing: false, tooltip: '' },
+    ];
+    const fmtK = (n) => n.toLocaleString('fr-FR') + ' K';
+    let craftsFiltered = CRAFTS_RAW.filter(c => c.name.toLowerCase().includes(s.craftsSearch.toLowerCase()));
+    craftsFiltered.sort((a, b) => {
+      const ka = typeof a[s.craftsSortKey] === 'number' ? a[s.craftsSortKey] : a[s.craftsSortKey];
+      const kb = typeof b[s.craftsSortKey] === 'number' ? b[s.craftsSortKey] : b[s.craftsSortKey];
+      const cmp = ka > kb ? 1 : ka < kb ? -1 : 0;
+      return s.craftsSortDir === 'asc' ? cmp : -cmp;
+    });
+    const craftsList = craftsFiltered.map(c => ({
+      ...c, monthly: fmtK(c.monthly),
+      onTrack: () => this.openTrack({ name: c.name, suggested: c.price + ' (prix de vente moyen)', suggestedRaw: 0, source: 'Suggéré depuis le prix médian HDV des ' + Math.floor(Math.random()*4+3) + ' derniers jours' }),
+    }));
+    const sortSetter = (key) => () => this.setState(st => ({ craftsSortKey: key, craftsSortDir: st.craftsSortKey === key && st.craftsSortDir === 'desc' ? 'asc' : 'desc' }));
+    const craftsSort = { name: sortSetter('name'), cost: sortSetter('cost'), price: sortSetter('price'), marginUnit: sortSetter('marginUnit'), volume: sortSetter('volume'), monthly: sortSetter('monthly') };
+
+    const INCOMPLETE_RAW = [
+      { item: 'Objet A', resource: 'Laine', qty: 4, status: 'priced' },
+      { item: 'Objet A', resource: 'Bois sacré', qty: 2, status: 'missing_resource' },
+      { item: 'Objet C', resource: 'Ecorce', qty: 1, status: 'missing_price' },
+      { item: 'Objet F', resource: 'Plume corbac', qty: 6, status: 'missing_resource' },
+      { item: 'Objet G', resource: 'Griffe wa wabbit', qty: 3, status: 'missing_price' },
+      { item: 'Objet H', resource: 'Cuir bouftou', qty: 5, status: 'priced' },
+    ];
+    const STATUS_STYLE = {
+      priced: { bg: '#dcead9', fg: '#2e7d32', reason: 'Ressource déjà référencée — en attente des autres' },
+      missing_resource: { bg: '#f0d6cf', fg: '#a3271a', reason: 'Ressource manquante en inventaire' },
+      missing_price: { bg: '#f0d6cf', fg: '#a3271a', reason: 'Prix non référencé pour cette ressource' },
+    };
+    let incompleteSorted = [...INCOMPLETE_RAW];
+    incompleteSorted.sort((a, b) => (s.incompleteSortDir === 'asc' ? 1 : -1) * (a[s.incompleteSortKey] > b[s.incompleteSortKey] ? 1 : -1));
+    const incompleteList = incompleteSorted.map(r => ({ ...r, ...STATUS_STYLE[r.status] }));
+    const incSortSetter = (key) => () => this.setState(st => ({ incompleteSortKey: key, incompleteSortDir: st.incompleteSortKey === key && st.incompleteSortDir === 'desc' ? 'asc' : 'desc' }));
+    const incompleteSort = { item: incSortSetter('item'), resource: incSortSetter('resource'), status: incSortSetter('status') };
+
+    const FAMILIERS_RAW = [
+      { name: 'Familier A', cost: '1 200 K', price: '5 600 K', volume: '5/mois', monthly: 4300 },
+      { name: 'Familier B', cost: '900 K', price: '3 900 K', volume: '4/mois', monthly: 2980 },
+      { name: 'Familier C', cost: '2 400 K', price: '6 200 K', volume: '2/mois', monthly: 1640 },
+      { name: 'Familier D', cost: '600 K', price: '2 100 K', volume: '6/mois', monthly: 1120 },
+    ];
+    const familiersList = FAMILIERS_RAW.filter(f => f.name.toLowerCase().includes(s.familiersSearch.toLowerCase()))
+      .map(f => ({ ...f, monthly: fmtK(f.monthly), onTrack: () => this.openTrack({ name: f.name, suggested: f.price, suggestedRaw: 0, source: 'Suggéré depuis le dernier prix capturé' }) }));
+    const familiersPending = [
+      { name: 'Familier E', cost: '—', price: '—', volume: '—', reason: 'Aucune vente observée' },
+      { name: 'Familier F', cost: '1 100 K', price: '—', volume: '—', reason: 'Prix de vente non référencé' },
+      { name: 'Familier G', cost: '—', price: '2 900 K', volume: '—', reason: 'Coût d\'obtention inconnu' },
+    ];
+
+    const PRIX_CATS = [['ressources', 'Ressources'], ['familiers', 'Familiers'], ['equipements', 'Équipements']];
+    const prixTabs = PRIX_CATS.map(([id, label]) => ({ label, active: s.prixCategory === id, inactive: s.prixCategory !== id, onClick: () => this.setState({ prixCategory: id, prixLimit: 5 }) }));
+    const PRIX_DATA = {
+      ressources: [
+        { name: 'Laine', price: '48 K', updated: 'il y a 12s' }, { name: 'Bois sacré', price: '210 K', updated: 'il y a 34s' },
+        { name: 'Ecorce', price: '65 K', updated: 'il y a 1 min' }, { name: 'Plume corbac', price: '32 K', updated: 'il y a 2 min' },
+        { name: 'Griffe wa wabbit', price: '58 K', updated: 'il y a 3 min' }, { name: 'Cuir bouftou', price: '41 K', updated: 'il y a 4 min' },
+        { name: 'Ecaille tofu', price: '19 K', updated: 'il y a 6 min' }, { name: 'Corne bélier', price: '27 K', updated: 'il y a 9 min' },
+      ],
+      familiers: [
+        { name: 'Familier A', price: '5 600 K', updated: 'il y a 8s' }, { name: 'Familier B', price: '3 900 K', updated: 'il y a 40s' },
+        { name: 'Familier C', price: '6 200 K', updated: 'il y a 1 min' }, { name: 'Familier D', price: '2 100 K', updated: 'il y a 3 min' },
+      ],
+      equipements: [
+        { name: 'Objet A', price: '9 800 K', updated: 'il y a 20s' }, { name: 'Objet C', price: '11 200 K', updated: 'il y a 2 min' },
+        { name: 'Objet E', price: '13 100 K', updated: 'il y a 5 min' },
+      ],
+    };
+    const prixFiltered = (PRIX_DATA[s.prixCategory] || []).filter(p => p.name.toLowerCase().includes(s.prixSearch.toLowerCase()));
+    const prixList = prixFiltered.slice(0, s.prixLimit);
+    const prixHasMore = prixFiltered.length > s.prixLimit;
+
+    const HIST_CATS = [['ressources', 'Ressources'], ['familiers', 'Familiers'], ['equipements', 'Équipements']];
+    const HIST_NAMES_BY_CAT = { ressources: ['Laine', 'Bois sacré', 'Ecorce'], familiers: ['Familier A', 'Familier B'], equipements: ['Objet A', 'Objet C'] };
+    const histTabs = HIST_CATS.map(([id, label]) => ({ label, active: s.histCategory === id, inactive: s.histCategory !== id, onClick: () => this.setState({ histCategory: id, histSelected: HIST_NAMES_BY_CAT[id][0] }) }));
+    const histObjects = HIST_NAMES_BY_CAT[s.histCategory].filter(n => n.toLowerCase().includes(s.histSearch.toLowerCase()))
+      .map(n => ({ name: n, active: n === s.histSelected, inactive: n !== s.histSelected, onClick: () => this.setState({ histSelected: n }) }));
+    const histIsRessource = s.histCategory === 'ressources', histIsFamilier = s.histCategory === 'familiers', histIsEquipement = s.histCategory === 'equipements';
+    const editLot = (lot) => () => this.showToast('Modification de ' + lot + ' — formulaire ci-dessous');
+    const histLots = [
+      { lot: 'x1', price: '48 K', xp: '12', onEdit: editLot('x1') }, { lot: 'x10', price: '460 K', xp: '120', onEdit: editLot('x10') },
+      { lot: 'x100', price: '4 400 K', xp: '1 200', onEdit: editLot('x100') }, { lot: 'x1000', price: '42 000 K', xp: '12 000', onEdit: editLot('x1000') },
+    ];
+    const histLevels = [
+      { lot: 'Niveau 0', price: '1 200 K', onEdit: editLot('niveau 0') }, { lot: 'Niveau 100', price: '5 600 K', onEdit: editLot('niveau 100') },
+    ];
+
+    const SUIVIS_TABS = [['tous', 'Tous'], ['encours', 'En cours'], ['vendu', 'Vendus']];
+    const suivisTabs = SUIVIS_TABS.map(([id, label]) => ({ label, active: s.suivisFilter === id, inactive: s.suivisFilter !== id, onClick: () => this.setState({ suivisFilter: id }) }));
+    const SUIVIS_RAW = [
+      { name: 'Objet A', qty: 4, paid: 3200, sold: 9800, profit: 2340, roi: 0.20, status: 'vendu' },
+      { name: 'Familier B', qty: 1, paid: 900, sold: 3900, profit: 2980, roi: 3.31, status: 'vendu' },
+      { name: 'Objet C', qty: 2, paid: 4600, sold: 11200, profit: 4290, roi: 0.72, status: 'encours' },
+      { name: 'Objet F', qty: 6, paid: 900, sold: 2300, profit: 1230, roi: 0.23, status: 'vendu' },
+      { name: 'Objet D', qty: 3, paid: 1800, sold: 4100, profit: 690, roi: 0.13, status: 'encours' },
+    ];
+    let suivisFiltered = SUIVIS_RAW.filter(v => (s.suivisFilter === 'tous' || v.status === s.suivisFilter) && v.name.toLowerCase().includes(s.suivisSearch.toLowerCase()));
+    suivisFiltered.sort((a, b) => (s.suivisSortDir === 'asc' ? 1 : -1) * (a[s.suivisSortKey] > b[s.suivisSortKey] ? 1 : -1));
+    const suivisSortSetter = (key) => () => this.setState(st => ({ suivisSortKey: key, suivisSortDir: st.suivisSortKey === key && st.suivisSortDir === 'desc' ? 'asc' : 'desc' }));
+    const suivisSort = { name: suivisSortSetter('name'), profit: suivisSortSetter('profit'), roi: suivisSortSetter('roi') };
+    const suivisList = suivisFiltered.map(v => ({
+      name: v.name, qty: v.qty, paid: fmtK(v.paid), sold: fmtK(v.sold), profit: fmtK(v.profit), roi: (v.roi >= 0 ? '+' : '') + Math.round(v.roi * 100) + '%',
+      isEnCours: v.status === 'encours', isVendu: v.status === 'vendu',
+    }));
+
+    const serveursList = s.servers.map((sv, i) => ({
+      ...sv, editing: s.editingServerIndex === i, notEditing: s.editingServerIndex !== i, editValue: s.editServerValue,
+      onActivate: () => this.setState(st => ({ servers: st.servers.map((x, j) => ({ ...x, active: j === i })) })),
+      onStartEdit: () => this.setState({ editingServerIndex: i, editServerValue: sv.name }),
+      onEditChange: (e) => this.setState({ editServerValue: e.target.value }),
+      onSaveEdit: () => this.setState(st => ({ servers: st.servers.map((x, j) => j === i ? { ...x, name: st.editServerValue || x.name } : x), editingServerIndex: -1 })), 
+      onDelete: () => { this.setState(st => ({ servers: st.servers.filter((_, j) => j !== i) })); this.showToast('Contexte supprimé'); },
+    }));
+
+    return {
+      navItems, screenTitle: TITLES[s.screen], activeServer: s.servers.find(x => x.active)?.name || '',
+      freshness: 'il y a 12s',
+      isDashboard: s.screen === 'dashboard',
+      isCrafts: s.screen === 'crafts', isFamiliers: s.screen === 'familiers', isPrix: s.screen === 'prix',
+      isHistorique: s.screen === 'historique', isSuivis: s.screen === 'suivis', isServeurs: s.screen === 'serveurs',
+      isReglages: s.screen === 'reglages', isImport: s.screen === 'import',
+      kpiCrafts: 14, kpiFamiliers: 6,
+      dashCrafts, dashFamiliers, activity,
+      craftsSearch: s.craftsSearch, onCraftsSearch: (e) => this.setState({ craftsSearch: e.target.value }),
+      craftsCount: craftsList.length, craftsList, craftsSort, craftsSortArrow: s.craftsSortDir === 'desc' ? '↓' : '↑',
+      craftsPossibleCount: CRAFTS_RAW.filter(c => !c.hasMissing).length,
+      incompleteList, incompleteSort,
+      familiersSearch: s.familiersSearch, onFamiliersSearch: (e) => this.setState({ familiersSearch: e.target.value }), familiersList, familiersPending,
+      prixTabs, prixSearch: s.prixSearch, onPrixSearch: (e) => this.setState({ prixSearch: e.target.value, prixLimit: 5 }), prixList,
+      prixHasMore, onPrixShowMore: () => this.setState(st => ({ prixLimit: st.prixLimit + 5 })),
+      histTabs, histSearch: s.histSearch, onHistSearch: (e) => this.setState({ histSearch: e.target.value }), histObjects, histSelected: s.histSelected,
+      histIsRessource, histIsFamilier, histIsEquipement, histLots, histLevels, histEquipPrice: '9 800 K',
+      onEditEquip: () => this.showToast('Modification du prix — formulaire ci-dessous'),
+      manualPrice: s.manualPrice, onManualPriceChange: (e) => this.setState({ manualPrice: e.target.value }),
+      manualXp: s.manualXp, onManualXpChange: (e) => this.setState({ manualXp: e.target.value }),
+      onSaveManual: () => { this.setState({ manualPrice: '', manualXp: '' }); this.showToast('Prix enregistré'); },
+      suivisTabs, suivisSearch: s.suivisSearch, onSuivisSearch: (e) => this.setState({ suivisSearch: e.target.value }), suivisSort, suivisList,
+      serveursList, newServerName: s.newServerName, onNewServerChange: (e) => this.setState({ newServerName: e.target.value }),
+      onAddServer: () => {
+        if (!s.newServerName.trim()) return;
+        this.setState(st => ({ servers: [...st.servers, { name: st.newServerName, meta: 'Créé à l\'instant', active: false }], newServerName: '' }));
+        this.showToast('Contexte créé');
+      },
+      marginSafety: s.marginSafety, onMarginChange: (e) => this.setState({ marginSafety: Number(e.target.value) }),
+      openCmdk: () => this.setState({ cmdkOpen: true, cmdkQuery: '' }),
+      closeCmdk: () => this.setState({ cmdkOpen: false }),
+      onCmdkChange: (e) => this.setState({ cmdkQuery: e.target.value }),
+      cmdkOpen: s.cmdkOpen, cmdkQuery: s.cmdkQuery, cmdkResults,
+      goToCrafts: () => this.goTo('crafts'),
+      trackOpen: s.trackOpen, trackItem: s.trackItem || { name: '', suggested: '', source: '' },
+      trackQty: s.trackQty, trackPrice: s.trackPrice,
+      onTrackQtyChange: (e) => this.setState({ trackQty: e.target.value }),
+      onTrackPriceChange: (e) => this.setState({ trackPrice: e.target.value }),
+      closeTrack: () => this.setState({ trackOpen: false }),
+      confirmTrack: () => { this.setState({ trackOpen: false }); this.showToast('Ajouté aux suivis'); },
+      toggleServerSwitch: () => this.showToast('Changement de contexte — panneau à venir'),
+      stop: (e) => e.stopPropagation(),
+      toastVisible: s.toastVisible, toastMessage: s.toastMessage,
+    };
+  }
+}
+
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# Price API — service léger (aucune dépendance vision : ni opencv ni OCR).
+fastapi==0.139.2
+uvicorn==0.51.0
+pydantic>=2,<3
+python-multipart==0.0.32  # Form parsing (endpoints d'écriture)
+# Phase 3 — Postgres via SQLAlchemy + migrations Alembic.
+sqlalchemy==2.0.52
+alembic==1.19.1
+psycopg[binary]==3.2.3    # driver Postgres (postgresql+psycopg://) ; inutile pour la SQLite de dev

@@ -1,0 +1,410 @@
+{% extends "base.html" %}
+{% block title %}Atelier · Kamas{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Atelier</h1>
+  </div>
+</div>
+
+<!-- ÉQUIPEMENTS ------------------------------------------------------------ -->
+<div class="flex-between mt-24">
+  <div class="section-title" style="margin:0">Équipements à crafter (<span id="equip-count">0</span>)</div>
+  <button type="button" class="btn btn-sm" onclick="fillAllMax()"
+          title="Marquer TOUTES les ressources de la liste comme possédées (au max requis)">Tout au max</button>
+</div>
+
+<div id="equip-empty" class="empty-state" style="display:none; margin-top:12px">
+  Aucun équipement en préparation — clique « + Préparer » sur un craft depuis Crafts (ou Prix / Historique).
+</div>
+
+<div id="resources-wrap" style="margin-top:12px">
+  <div class="section-title" style="font-size:12px">Liste de courses — ressources de tous les équipements</div>
+  <div class="table-card" id="resources-card"></div>
+</div>
+
+<div id="equip-cards" style="margin-top:16px"></div>
+
+<!-- FAMILIERS -------------------------------------------------------------- -->
+<div class="flex-between mt-24">
+  <div class="section-title" style="margin:0">Familiers à monter (<span id="pet-count">0</span>)</div>
+  <a href="/pets" class="badge badge-neutral">Ajouter depuis Familiers →</a>
+</div>
+
+<div id="pet-empty" class="empty-state" style="display:none; margin-top:12px">
+  Aucun familier en préparation — clique « + Préparer » sur un familier depuis Familiers (ou Prix / Historique).
+</div>
+
+<div id="pet-cards" style="margin-top:12px"></div>
+
+<!-- TOP 20 XP/PRIX --------------------------------------------------------- -->
+<div class="section-title mt-24">Top 20 ressources de nourrissage — rentabilité XP / prix</div>
+<div class="table-card" id="leaderboard-card" style="margin-top:12px"></div>
+
+<script>
+  const S = {
+    equipments: {{ equipments | tojson }},
+    pets: {{ pets | tojson }},
+    owned: {{ owned | tojson }},
+    leaderboard: {{ feed_leaderboard | tojson }},
+    feedOptions: {{ feed_options | tojson }},
+    xpTable: {{ xp_table | tojson }},
+    xpTo100: {{ xp_to_100 | tojson }},
+  };
+
+  // Quantité possédée par ressource (globale). Clés en Number pour matcher les
+  // item_id numériques (JSON sérialise les clés d'objet en chaînes).
+  const ownedMap = {};
+  Object.keys(S.owned).forEach((k) => { ownedMap[Number(k)] = S.owned[k]; });
+  const feedMap = {};
+  S.feedOptions.forEach((f) => { feedMap[f.item_id] = f; });
+
+  function formatK(v) {
+    return v === null || v === undefined ? '—' : String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+  function iconCell(id, name, category, extraAttr) {
+    return `<a class="item-cell" href="/history?item_id=${id}&category=${category}" ${extraAttr || ''}>
+      <div class="item-icon"><img src="/icons/${id}.png" alt="" onerror="this.style.display='none'" /></div>
+      <div class="item-name">${esc(name)}</div></a>`;
+  }
+  function levelReached(totalXp) {
+    let r = 0;
+    for (let l = 0; l <= 100; l++) { if (S.xpTable[l] <= totalXp) r = l; else break; }
+    return r;
+  }
+  function postForm(url, data) {
+    const body = new URLSearchParams();
+    Object.keys(data).forEach((k) => body.append(k, data[k]));
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body }).catch(() => {});
+  }
+
+  // Besoin agrégé par ressource = Σ (base_qty × nombre de crafts) sur tous les
+  // équipements — recalculé à chaque changement de quantité/craft (dynamique).
+  function aggregate() {
+    const agg = {};
+    S.equipments.forEach((e) => e.ingredients.forEach((ing) => {
+      const a = agg[ing.item_id] || (agg[ing.item_id] = { item_id: ing.item_id, name: ing.name, unit_price: ing.unit_price, total_qty: 0 });
+      a.total_qty += ing.base_qty * e.craft_count;
+    }));
+    return agg;
+  }
+  function equipComplete(e) {
+    return !!e.recipe_id && e.ingredients.length > 0 &&
+      e.ingredients.every((ing) => (ownedMap[ing.item_id] || 0) >= ing.base_qty * e.craft_count);
+  }
+
+  // Coût de ce qu'il RESTE à acheter pour une ressource = prix unitaire ×
+  // (besoin total − déjà possédé), plancher à 0. null si le prix est inconnu.
+  function lineRemainingCost(r, owned) {
+    if (r.unit_price == null) return null;
+    return r.unit_price * Math.max(0, (r.total_qty || 0) - (owned || 0));
+  }
+  // MAJ ciblée (sans re-render, pour ne pas casser le focus/Tab) du prix restant
+  // de la ligne modifiée + du total général, quand on change une quantité possédée.
+  function refreshRemaining(resId) {
+    const agg = aggregate();
+    if (resId != null && agg[resId]) {
+      const cell = document.querySelector('#resources-card [data-remaining-cell="' + resId + '"]');
+      if (cell) cell.textContent = formatK(lineRemainingCost(agg[resId], ownedMap[resId] || 0));
+    }
+    let sum = 0;
+    Object.values(agg).forEach((r) => {
+      const c = lineRemainingCost(r, ownedMap[r.item_id] || 0);
+      if (c != null) sum += c;
+    });
+    const totalCell = document.getElementById('res-total-remaining');
+    if (totalCell) totalCell.textContent = formatK(sum);
+  }
+
+  // --- liste de courses ---
+  function renderResources() {
+    const el = document.getElementById('resources-card');
+    const agg = aggregate();
+    const list = Object.values(agg).sort((a, b) => a.name.localeCompare(b.name));
+    if (!list.length) { el.innerHTML = '<div class="empty-state">Aucune ressource — ajoute un équipement avec une recette connue.</div>'; return; }
+    let totalFull = 0, totalRemaining = 0, totalQty = 0;
+    const rows = list.map((r) => {
+      const owned = ownedMap[r.item_id] || 0;
+      const done = owned >= r.total_qty;
+      const lineTotal = r.unit_price != null ? r.unit_price * r.total_qty : null;  // coût complet (fixe)
+      const lineRemaining = lineRemainingCost(r, owned);  // coût de ce qu'il RESTE à acheter
+      totalQty += r.total_qty;
+      if (lineTotal != null) totalFull += lineTotal;
+      if (lineRemaining != null) totalRemaining += lineRemaining;
+      return `
+        <tr class="res-row ${done ? 'done' : ''}">
+          <td>${iconCell(r.item_id, r.name, 'ressource', 'tabindex="-1"')}</td>
+          <td class="num kamas">${formatK(r.unit_price)}</td>
+          <td class="num">${r.total_qty}</td>
+          <td class="num kamas">${formatK(lineTotal)}</td>
+          <td class="num kamas" data-remaining-cell="${r.item_id}">${formatK(lineRemaining)}</td>
+          <td class="num">
+            <span class="owned-cell">
+              <input class="atelier-qty-input" type="number" min="0" step="1" value="${owned}"
+                     data-res-id="${r.item_id}" data-max="${r.total_qty}" onchange="onOwned(${r.item_id}, this.value, this)" />
+              <button type="button" class="btn btn-sm" tabindex="-1" onclick="fillRowMax(${r.item_id})"
+                      title="Au max requis (${r.total_qty})">max</button>
+            </span>
+          </td>
+        </tr>`;
+    }).join('');
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>Ressource</th><th class="num">Prix / u.</th><th class="num">Qté requise</th><th class="num">Prix total</th><th class="num">Prix restant</th><th class="num">Possédé</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr>
+          <td class="total-label">Total</td>
+          <td></td>
+          <td class="num">${totalQty}</td>
+          <td class="num kamas">${formatK(totalFull)}</td>
+          <td class="num kamas" id="res-total-remaining">${formatK(totalRemaining)}</td>
+          <td></td>
+        </tr></tfoot>
+      </table>`;
+  }
+
+  // --- cartes équipement ---
+  function renderEquipments() {
+    const wrap = document.getElementById('equip-cards');
+    document.getElementById('equip-count').textContent = S.equipments.length;
+    const has = S.equipments.length > 0;
+    document.getElementById('equip-empty').style.display = has ? 'none' : '';
+    document.getElementById('resources-wrap').style.display = has ? '' : 'none';
+    wrap.innerHTML = S.equipments.map((e) => {
+      const complete = equipComplete(e);
+      const totalCost = e.craft_cost_unit * e.craft_count;
+      const ings = e.ingredients.map((ing) => {
+        const need = ing.base_qty * e.craft_count;
+        const owned = ownedMap[ing.item_id] || 0;
+        const ok = owned >= need;
+        return `<div class="atelier-ing ${ok ? 'ok' : 'ko'}">
+          <div class="item-icon" style="width:24px;height:24px"><img src="/icons/${ing.item_id}.png" alt="" onerror="this.style.display='none'" /></div>
+          <span>${esc(ing.name)}</span>
+          <span class="item-sub">×${need} · possédé ${owned}/${need}${ok ? ' ✓' : ''} · ${formatK(ing.unit_price != null ? ing.unit_price * need : null)} K</span>
+        </div>`;
+      }).join('');
+      const action = complete
+        ? `<button type="button" class="btn btn-sm btn-primary" onclick="craftToSuivis(${e.atelier_id})">Crafté → Suivis</button>`
+        : (!e.recipe_id
+            ? '<span class="item-sub">Pas de recette connue</span>'
+            : `<span class="item-sub">Ressources incomplètes</span>
+               <button type="button" class="btn btn-sm" onclick="completeEquip(${e.atelier_id})"
+                       title="Marquer toutes les ressources de ce craft comme possédées">Tout compléter</button>`);
+      return `
+        <div class="atelier-card ${complete ? 'done' : ''}">
+          <div class="atelier-card-head">
+            ${iconCell(e.item_id, e.name, 'equipement')}
+            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+              <label class="item-sub" style="display:flex; align-items:center; gap:6px">×
+                <input class="atelier-qty-input" style="width:64px" type="number" min="1" step="1" value="${e.craft_count}"
+                       onchange="onCraftCount(${e.atelier_id}, this.value)" title="Nombre de crafts" /> crafts
+              </label>
+              <span class="item-sub">Coût : <span class="kamas">${formatK(totalCost)}</span> K</span>
+              ${action}
+              <form method="post" action="/atelier/${e.atelier_id}/remove" style="display:inline">
+                <button type="submit" class="btn btn-icon-sm btn-danger" title="Retirer de l'atelier">✕</button>
+              </form>
+            </div>
+          </div>
+          <div style="margin-top:10px">${ings || '<span class="item-sub">—</span>'}</div>
+        </div>`;
+    }).join('');
+  }
+
+  // Envoie l'équipement crafté DIRECTEMENT en Suivis (étape forgemagie), sans
+  // passer par la page /suivis/new : le coût de craft est automatique, et le
+  // prix de vente se fixe plus tard dans la forgemagie. L'utilisateur RESTE sur
+  // l'Atelier (toast de réussite, pas de redirection) pour enchaîner les crafts.
+  function craftToSuivis(atelierId) {
+    const e = S.equipments.find((x) => x.atelier_id === atelierId);
+    if (!e) return;
+    const cc = e.craft_count;
+    const totalCost = Math.round(e.craft_cost_unit * cc);
+    if (!totalCost || totalCost <= 0) {
+      window.showToast('Coût de craft inconnu — renseigne le prix des ressources', false);
+      return;
+    }
+    const body = new URLSearchParams({
+      item_id: e.item_id, category: 'equipement', quantity: cc,
+      buy_price_kamas: totalCost, atelier_id: atelierId,
+    });
+    fetch('/suivis/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'fetch' },
+      body,
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && d.ok) {
+          window.showToast('« ' + e.name + ' » envoyé en forgemagie (Suivis)');
+          // Le serveur a consommé les ingrédients + supprimé la ligne d'atelier :
+          // on reflète les deux côté client (sinon stale jusqu'au rechargement).
+          e.ingredients.forEach((ing) => {
+            ownedMap[ing.item_id] = Math.max(0, (ownedMap[ing.item_id] || 0) - ing.base_qty * cc);
+          });
+          S.equipments = S.equipments.filter((x) => x.atelier_id !== atelierId);
+          renderResources();
+          renderEquipments();
+        } else {
+          window.showToast('Envoi impossible', false);
+        }
+      })
+      .catch(() => window.showToast('Erreur réseau', false));
+  }
+
+  // --- cartes familier ---
+  function computePet(p) {
+    const fm = p.feed_resource_item_id != null ? feedMap[p.feed_resource_item_id] : null;
+    const xp = fm ? fm.xp_value : null;
+    const up = fm ? fm.unit_price : null;
+    const qtyFor100 = xp ? Math.ceil(S.xpTo100 / xp) : null;
+    const level = xp ? levelReached((p.feed_qty_owned || 0) * xp) : 0;
+    const complete = qtyFor100 != null && (p.feed_qty_owned || 0) >= qtyFor100;
+    const buyDefault = (qtyFor100 && up) ? Math.round(qtyFor100 * up) : null;
+    return { fm, xp, up, qtyFor100, level, complete, buyDefault };
+  }
+  function petSuivisUrl(p, c) {
+    let u = `/suivis/new?item_id=${p.item_id}&category=familier&atelier_id=${p.atelier_id}&quantity=1`;
+    if (c.buyDefault) u += `&buy_price_kamas=${c.buyDefault}`;
+    if (p.sell_default !== null && p.sell_default !== undefined) u += `&sell_price_kamas=${Math.round(p.sell_default)}`;
+    return u;
+  }
+  function renderPets() {
+    const wrap = document.getElementById('pet-cards');
+    document.getElementById('pet-count').textContent = S.pets.length;
+    document.getElementById('pet-empty').style.display = S.pets.length ? 'none' : '';
+    wrap.innerHTML = S.pets.map((p) => {
+      const c = computePet(p);
+      const optionHtml = `<option value="">Choisir une ressource…</option>` +
+        S.feedOptions.map((f) => `<option value="${f.item_id}"${p.feed_resource_item_id === f.item_id ? ' selected' : ''}>${esc(f.name)}</option>`).join('');
+      let status;
+      if (!c.fm) status = '<span class="item-sub">Choisis une ressource (avec un prix connu) pour estimer.</span>';
+      else if (c.complete) status = `<span style="color:var(--success)">✓ Niveau 100 atteint (${p.feed_qty_owned}/${c.qtyFor100})</span>`;
+      else status = `Il faut <strong>${c.qtyFor100}</strong> ${esc(c.fm.name)} pour le niveau 100 — avec ${p.feed_qty_owned || 0}, niveau atteint : <strong>${c.level}</strong>.`;
+      const action = c.complete ? `<a class="btn btn-sm btn-primary" href="${petSuivisUrl(p, c)}">Prêt → Suivis</a>` : '';
+      return `
+        <div class="atelier-card ${c.complete ? 'done' : ''}">
+          <div class="atelier-card-head">
+            ${iconCell(p.item_id, p.name, 'familier')}
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+              <select class="select" id="pet-feed-${p.atelier_id}" style="min-width:180px" onchange="onPetFeed(${p.atelier_id})">${optionHtml}</select>
+              <input class="atelier-qty-input" id="pet-qty-${p.atelier_id}" type="number" min="0" step="1"
+                     value="${p.feed_qty_owned || 0}" onchange="onPetFeed(${p.atelier_id})" title="Quantité possédée" />
+              ${action}
+              <form method="post" action="/atelier/${p.atelier_id}/remove" style="display:inline">
+                <button type="submit" class="btn btn-icon-sm btn-danger" title="Retirer de l'atelier">✕</button>
+              </form>
+            </div>
+          </div>
+          <div style="margin-top:8px; font-size:13px">${status}</div>
+        </div>`;
+    }).join('');
+  }
+
+  // --- top 20 xp/prix ---
+  function renderLeaderboard() {
+    const el = document.getElementById('leaderboard-card');
+    if (!S.leaderboard.length) { el.innerHTML = '<div class="empty-state">Aucune ressource de nourrissage avec un prix connu.</div>'; return; }
+    const rows = S.leaderboard.map((r, i) => `
+      <tr>
+        <td class="item-sub">${i + 1}</td>
+        <td>${iconCell(r.item_id, r.name, 'ressource', 'tabindex="-1"')}</td>
+        <td class="num">${formatK(r.xp_value)}</td>
+        <td class="num kamas">${formatK(r.unit_price)}</td>
+        <td class="num"><strong>${r.xp_per_kama.toFixed(2)}</strong></td>
+      </tr>`).join('');
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>#</th><th>Ressource</th><th class="num">XP / u.</th><th class="num">Prix / u.</th><th class="num">XP / kama</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  // --- events ---
+  function onOwned(resId, val, inputEl) {
+    // Plafonne au besoin total : entrer 100 alors qu'il en faut 10 => 10.
+    const needed = (aggregate()[resId] || {}).total_qty || 0;
+    const q = Math.min(needed, Math.max(0, parseInt(val, 10) || 0));
+    ownedMap[resId] = q;
+    // On ne re-render PAS toute la table (ça détruirait les <input> et ferait
+    // perdre le focus : après Tab, on n'atterrirait plus sur le champ suivant).
+    // On met juste à jour la ligne courante (barré + valeur plafonnée) + le prix
+    // restant (de la ligne et du total), qui, eux, dépendent du possédé.
+    if (inputEl) {
+      if (String(q) !== inputEl.value) inputEl.value = q;
+      const tr = inputEl.closest('tr');
+      if (tr) tr.classList.toggle('done', q >= needed);
+    }
+    refreshRemaining(resId);
+    postForm('/atelier/resource-owned', { resource_item_id: resId, quantity: q });
+    renderEquipments();  // conteneur séparé : ne touche pas aux inputs ressources
+  }
+  function onCraftCount(atelierId, val) {
+    const q = Math.max(1, parseInt(val, 10) || 1);
+    const e = S.equipments.find((x) => x.atelier_id === atelierId);
+    if (e) e.craft_count = q;
+    postForm('/atelier/' + atelierId + '/quantity', { quantity: q });
+    renderResources();
+    renderEquipments();
+  }
+  function onPetFeed(atelierId) {
+    const sel = document.getElementById('pet-feed-' + atelierId);
+    const qtyEl = document.getElementById('pet-qty-' + atelierId);
+    const res = sel && sel.value ? parseInt(sel.value, 10) : null;
+    const qty = Math.max(0, parseInt(qtyEl && qtyEl.value, 10) || 0);
+    const p = S.pets.find((x) => x.atelier_id === atelierId);
+    if (p) { p.feed_resource_item_id = res; p.feed_qty_owned = qty; }
+    postForm('/atelier/' + atelierId + '/feed', { feed_resource_item_id: res || '', feed_qty_owned: qty });
+    renderPets();
+  }
+
+  // Met UNE ressource à son max requis (bouton "max" de la ligne). Réutilise
+  // onOwned (qui plafonne + met à jour barré + repost) pour ne pas dupliquer la
+  // logique ni re-render toute la table (préserve les autres champs en saisie).
+  function fillRowMax(resId) {
+    const inp = document.querySelector('#resources-card input[data-res-id="' + resId + '"]');
+    const needed = (aggregate()[resId] || {}).total_qty || 0;
+    if (inp) inp.value = needed;
+    onOwned(resId, needed, inp);
+  }
+  // Met TOUTES les ressources de la liste à leur max requis (bouton global).
+  function fillAllMax() {
+    Object.values(aggregate()).forEach((r) => {
+      ownedMap[r.item_id] = r.total_qty;
+      postForm('/atelier/resource-owned', { resource_item_id: r.item_id, quantity: r.total_qty });
+    });
+    renderResources();
+    renderEquipments();
+  }
+  // Complète toutes les ressources d'UN équipement (bouton "Tout compléter") :
+  // chaque ingrédient passe à son besoin agrégé -> l'équipement devient complet.
+  function completeEquip(atelierId) {
+    const e = S.equipments.find((x) => x.atelier_id === atelierId);
+    if (!e) return;
+    const agg = aggregate();
+    e.ingredients.forEach((ing) => {
+      const needed = (agg[ing.item_id] || {}).total_qty || (ing.base_qty * e.craft_count);
+      ownedMap[ing.item_id] = needed;
+      postForm('/atelier/resource-owned', { resource_item_id: ing.item_id, quantity: needed });
+    });
+    renderResources();
+    renderEquipments();
+  }
+
+  // Exposés sur window : appelés par des onchange inline dans le HTML généré,
+  // et la nav SPA ré-exécute ce script en portée isolée (cf. base.html).
+  window.onOwned = onOwned;
+  window.onCraftCount = onCraftCount;
+  window.onPetFeed = onPetFeed;
+  window.fillRowMax = fillRowMax;
+  window.fillAllMax = fillAllMax;
+  window.completeEquip = completeEquip;
+  window.craftToSuivis = craftToSuivis;
+
+  renderResources();
+  renderEquipments();
+  renderPets();
+  renderLeaderboard();
+</script>
+{% endblock %}

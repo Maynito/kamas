@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Élevage · Kamas{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Rentabilité de l'élevage</h1>
+  </div>
+  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+    <span class="badge badge-success"><span class="confidence-dot" style="background:var(--success)"></span>Mise à jour auto</span>
+    <span style="display:inline-flex; align-items:center; gap:6px" title="Intervalle de jauge à chiffrer (0 – 100 000)">
+      <span class="item-sub">Jauge</span>
+      <input id="elv-from" class="text-input" type="number" min="0" max="100000" step="1000" style="width:96px"
+             value="{{ range_from }}" />
+      <span class="item-sub">→</span>
+      <input id="elv-to" class="text-input" type="number" min="0" max="100000" step="1000" style="width:96px"
+             value="{{ range_to }}" />
+    </span>
+  </div>
+</div>
+
+<div class="stat-row" id="elevage-summary"></div>
+<div id="elevage-gauges"></div>
+
+<script>
+  const initialGauges = {{ gauges | tojson }};
+  const gaugeMax = {{ gauge_max | tojson }};
+  let initialTotalAll = {{ total_all | tojson }};
+  let rangeFrom = {{ range_from | tojson }};
+  let rangeTo = {{ range_to | tojson }};
+
+  function formatK(v) {
+    return v === null || v === undefined ? '—' : String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+
+  function renderElevage(gauges, totalAll, rFrom, rTo) {
+    document.getElementById('elevage-summary').innerHTML =
+      '<div class="stat-tile">' +
+        '<div class="stat-label">Remplir les 6 jauges de ' + formatK(rFrom) + ' → ' + formatK(rTo) + '</div>' +
+        '<div class="stat-value kamas">' + (totalAll !== null && totalAll !== undefined ? formatK(totalAll) + ' K' : '— prix manquants') + '</div>' +
+        '<div class="item-sub">estimation au prix HDV le moins cher, tranche par tranche</div>' +
+      '</div>';
+
+    document.getElementById('elevage-gauges').innerHTML = gauges.map((g) => {
+      const segs = g.segments.map((s) => {
+        if (s.item_id === null || s.item_id === undefined) {
+          return '<tr><td class="item-sub">' + formatK(s.from) + ' → ' + formatK(s.to) + '</td>' +
+                 '<td colspan="4" style="color:var(--danger)">Aucun carburant à prix connu pour cette tranche</td></tr>';
+        }
+        const action = s.source === 'craft'
+          ? '<span class="badge badge-success">Crafter</span>'
+          : (s.source === 'buy' ? '<span class="badge badge-info">Acheter</span>' : '');
+        return '<tr>' +
+          '<td class="item-sub">' + formatK(s.from) + ' → ' + formatK(s.to) + '</td>' +
+          '<td><a class="item-cell" href="/history?item_id=' + s.item_id + '&category=ressource">' +
+            '<div class="item-icon"><img src="/icons/' + s.item_id + '.png" alt="" onerror="this.style.display=\'none\'" /></div>' +
+            '<div class="item-name">' + (s.item_name || ('#' + s.item_id)) + '</div></a></td>' +
+          '<td>' + action + '</td>' +
+          '<td class="num">+' + formatK(s.fill) + '</td>' +
+          '<td class="num kamas">' + formatK(s.unit_price) + '</td>' +
+          '<td class="num kamas">' + formatK(s.cost) + '</td>' +
+        '</tr>';
+      }).join('');
+      if (!g.segments.length) {
+        return '';  // l'intervalle ne recoupe aucune tranche de cette jauge
+      }
+      const totalTxt = g.fillable ? formatK(g.total_cost) + ' K' : '— prix manquants';
+      return '<div class="table-card mt-24">' +
+        '<div class="flex-between" style="padding:12px 16px 4px">' +
+          '<div class="section-title" style="margin:0">Jauge ' + g.gauge + '</div>' +
+          '<div class="kamas" style="font-size:18px">' + totalTxt + '</div>' +
+        '</div>' +
+        '<table><thead><tr>' +
+          '<th>Tranche</th><th>Carburant conseillé</th><th>À faire</th><th class="num">Ajout / unité</th>' +
+          '<th class="num">Prix / unité</th><th class="num">Coût tranche</th>' +
+        '</tr></thead><tbody>' + segs + '</tbody></table>' +
+      '</div>';
+    }).join('');
+  }
+
+  // ── intervalle choisi ──────────────────────────────────────────────────
+  function elvReadInt(el) {
+    const v = (el.value || '').trim();
+    if (v === '') return null;
+    const n = parseInt(v, 10);
+    return isNaN(n) ? null : n;
+  }
+
+  // Bornes dans [0, 100 000], et début <= fin : si l'utilisateur crée une
+  // incohérence (ex. début 90 000 alors que fin 40 000), on ajuste l'AUTRE
+  // borne selon celle qu'il vient de changer. `changed` = 'from' | 'to'.
+  function elvValidate(changed) {
+    const fromEl = document.getElementById('elv-from');
+    const toEl = document.getElementById('elv-to');
+    let mn = elvReadInt(fromEl);
+    let mx = elvReadInt(toEl);
+    if (mn === null) mn = 0;
+    if (mx === null) mx = gaugeMax;
+    mn = Math.max(0, Math.min(gaugeMax, mn));
+    mx = Math.max(0, Math.min(gaugeMax, mx));
+    if (mn > mx) { if (changed === 'to') mn = mx; else mx = mn; }
+    fromEl.value = mn;
+    toEl.value = mx;
+    rangeFrom = mn;
+    rangeTo = mx;
+  }
+
+  function elvApply() {
+    history.replaceState(null, '', '/elevage?range_from=' + rangeFrom + '&range_to=' + rangeTo);
+    refreshElevage();
+  }
+
+  function refreshElevage() {
+    fetch('/api/elevage?range_from=' + rangeFrom + '&range_to=' + rangeTo)
+      .then((r) => r.json())
+      .then((d) => renderElevage(d.gauges, d.total_all, d.range_from, d.range_to))
+      .catch(() => {});
+  }
+
+  document.getElementById('elv-from').addEventListener('change', function () { elvValidate('from'); elvApply(); });
+  document.getElementById('elv-to').addEventListener('change', function () { elvValidate('to'); elvApply(); });
+
+  renderElevage(initialGauges, initialTotalAll, rangeFrom, rangeTo);
+  setInterval(refreshElevage, 2000);
+</script>
+{% endblock %}

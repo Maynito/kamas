@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Kamas{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Dashboard</h1>
+  </div>
+  <span class="badge badge-success"><span class="confidence-dot" style="background:var(--success)"></span>Mise à jour auto</span>
+</div>
+
+<div class="stat-row" id="dashboard-stats"></div>
+
+<div class="flex-between mt-24">
+  <div class="section-title" style="margin:0">Crafts les plus rentables</div>
+  <a href="/crafts" class="badge badge-neutral">Voir tout →</a>
+</div>
+<div class="table-card" style="margin-top:12px" id="dashboard-crafts-table"></div>
+
+<div class="flex-between mt-24">
+  <div class="section-title" style="margin:0">Familiers les plus rentables</div>
+  <a href="/pets" class="badge badge-neutral">Voir tout →</a>
+</div>
+<div class="table-card" style="margin-top:12px" id="dashboard-pets-table"></div>
+
+<div class="flex-between mt-24">
+  <div class="section-title" style="margin:0">Suivis</div>
+  <a href="/suivis" class="badge badge-neutral">Voir tout →</a>
+</div>
+<div class="table-card" style="margin-top:12px" id="dashboard-suivis-table"></div>
+
+<script>
+  const initialDashboard = {
+    crafts: {{ crafts | tojson }},
+    pets: {{ pets | tojson }},
+    recent: {{ recent | tojson }},
+    suivis: {{ suivis | tojson }},
+    craft_count: {{ craft_count | tojson }},
+    pet_count: {{ pet_count | tojson }},
+  };
+
+  function formatK(v) {
+    return v === null || v === undefined ? '—' : String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+
+  function deltaHtml(v) {
+    if (v === null || v === undefined) return '—';
+    const cls = v < 0 ? 'delta-negative' : 'delta-positive';
+    const sign = v < 0 ? '-' : '+';
+    return `<span class="${cls}">${sign}${formatK(Math.abs(v))}</span>`;
+  }
+
+  function renderDashboardStats(data) {
+    const bestCraftHint = data.crafts.length
+      ? (data.crafts[0].score !== null && data.crafts[0].score !== undefined
+          ? `Meilleur bénéfice/mois : ${formatK(data.crafts[0].score)} K (${data.crafts[0].result_name})`
+          : `Meilleure marge : ${formatK(data.crafts[0].margin)} K (${data.crafts[0].result_name})`)
+      : `Aucune recette rentable pour l'instant`;
+    const bestPetHint = data.pets.length
+      ? (data.pets[0].score !== null && data.pets[0].score !== undefined
+          ? `Meilleur bénéfice/mois : ${formatK(data.pets[0].score)} K (${data.pets[0].species_name})`
+          : `Meilleure marge : ${formatK(data.pets[0].margin)} K (${data.pets[0].species_name})`)
+      : `Aucun familier rentable pour l'instant`;
+    const lastCap = data.recent.length ? data.recent[0] : null;
+    const lastCaptureValue = lastCap
+      ? `<span class="stat-item"><span class="item-icon"><img src="/icons/${lastCap.item_id}.png" alt="" onerror="this.style.display='none'" /></span><span class="stat-item-name">${lastCap.label}</span></span>`
+      : '—';
+    const lastCaptureHint = lastCap
+      ? `${formatK(lastCap.price)} K · ${lastCap.high_confidence ? 'confiance élevée' : 'à vérifier'}`
+      : `Aucune capture pour l'instant`;
+
+    document.getElementById('dashboard-stats').innerHTML = `
+      <div class="stat-tile">
+        <div class="stat-label">Crafts rentables</div>
+        <div class="stat-value accent">${data.craft_count}</div>
+        <div class="stat-hint">${bestCraftHint}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Familiers rentables</div>
+        <div class="stat-value accent">${data.pet_count}</div>
+        <div class="stat-hint">${bestPetHint}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Dernière capture</div>
+        <div class="stat-value">${lastCaptureValue}</div>
+        <div class="stat-hint">${lastCaptureHint}</div>
+      </div>`;
+  }
+
+  function renderDashboardCraftsTable(crafts) {
+    const el = document.getElementById('dashboard-crafts-table');
+    if (!crafts.length) {
+      el.innerHTML = '<div class="empty-state">Aucun craft rentable pour l\'instant.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>Équipement</th><th class="num">Coût</th><th class="num">Vente nette</th><th class="num">Marge</th><th class="num">Bénéfice/mois</th></tr></thead>
+        <tbody>
+          ${crafts.map((c) => `
+          <tr>
+            <td>
+              <a class="item-cell" href="/history?item_id=${c.result_item_id}&category=equipement">
+                <div class="item-icon"><img src="/icons/${c.result_item_id}.png" alt="" onerror="this.style.display='none'" /></div>
+                <div class="item-name">${c.result_name}</div>
+              </a>
+            </td>
+            <td class="num kamas">${formatK(c.craft_cost)}</td>
+            <td class="num kamas">${formatK(c.sale_price_net)}</td>
+            <td class="num">${deltaHtml(c.margin)}</td>
+            <td class="num">${deltaHtml(c.score)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  function renderDashboardPetsTable(pets) {
+    const el = document.getElementById('dashboard-pets-table');
+    if (!pets.length) {
+      el.innerHTML = '<div class="empty-state">Aucun familier rentable pour l\'instant.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>Familier</th><th class="num">Coût XP</th><th class="num">Plus-value nette</th><th class="num">Marge</th><th class="num">Bénéfice/mois</th></tr></thead>
+        <tbody>
+          ${pets.map((p) => `
+          <tr>
+            <td>
+              <a class="item-cell" href="/history?item_id=${p.species_item_id}&category=familier">
+                <div class="item-icon"><img src="/icons/${p.species_item_id}.png" alt="" onerror="this.style.display='none'" /></div>
+                <div class="item-name">${p.species_name}</div>
+              </a>
+            </td>
+            <td class="num kamas">${formatK(p.feed_cost)}</td>
+            <td class="num kamas">${formatK(p.price_max_level - p.price_low_level)}</td>
+            <td class="num">${deltaHtml(p.margin)}</td>
+            <td class="num">${deltaHtml(p.score)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  function renderDashboardSuivisTable(suivis) {
+    const el = document.getElementById('dashboard-suivis-table');
+    if (!suivis.length) {
+      el.innerHTML = '<div class="empty-state">Aucun suivi pour l\'instant — ajoute-en depuis Crafts, Familiers, Prix ou Historique.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>Objet</th><th class="num">Qté</th><th class="num">Investi</th><th>État</th></tr></thead>
+        <tbody>
+          ${suivis.map((t) => `
+          <tr>
+            <td style="width:44%">
+              <a class="item-cell" href="/history?item_id=${t.item_id}&category=${t.category}">
+                <div class="item-icon"><img src="/icons/${t.item_id}.png" alt="" onerror="this.style.display='none'" /></div>
+                <div class="item-name">${t.name}</div>
+              </a>
+            </td>
+            <td class="num">×${t.quantity}</td>
+            <td class="num kamas">${formatK(t.buy_price_kamas)}</td>
+            <td>
+              ${t.status === 'sold'
+                ? `${deltaHtml(t.profit)} <span class="item-sub">vendu</span>`
+                : '<span class="badge badge-neutral">en cours</span>'}
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  function renderDashboard(data) {
+    renderDashboardStats(data);
+    renderDashboardCraftsTable(data.crafts);
+    renderDashboardPetsTable(data.pets);
+    renderDashboardSuivisTable(data.suivis);
+  }
+
+  function refreshDashboard() {
+    fetch('/api/dashboard')
+      .then((r) => r.json())
+      .then(renderDashboard)
+      .catch(() => {}); // le watcher/serveur peut être temporairement indisponible, on retentera au prochain tick
+  }
+
+  renderDashboard(initialDashboard);
+  setInterval(refreshDashboard, 2000);
+</script>
+{% endblock %}

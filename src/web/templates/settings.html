@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Réglages · Kamas{% endblock %}
+{% block content %}
+<div style="max-width:720px">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Réglages</h1>
+    </div>
+  </div>
+
+  <form method="post" action="/settings">
+    <div class="card">
+      <label class="field-label" for="safety_margin_percent">Marge de sécurité</label>
+      <div class="slider-row">
+        <input type="range" id="safety_margin_percent" name="safety_margin_percent" min="0" max="20" step="0.5"
+               value="{{ safety_margin }}"
+               oninput="document.getElementById('safety_margin_value').textContent = parseFloat(this.value).toFixed(1).replace('.', ',') + ' %'" />
+        <div class="slider-value" id="safety_margin_value">{{ "%.1f"|format(safety_margin) }} %</div>
+      </div>
+      <p class="field-hint">Marge additionnelle retranchée du prix de vente estimé, pour absorber la variation naturelle des prix HDV entre le relevé et la vente réelle. Plus elle est haute, plus les marges affichées sont prudentes.</p>
+    </div>
+
+    <div class="card mt-24">
+      <div class="flex-between">
+        <label class="field-label" style="margin:0">Taxe HDV</label>
+        <span class="badge badge-neutral">Fixe</span>
+      </div>
+      <div class="stat-value" style="margin-top:6px">{{ "%.1f"|format(hdv_tax) }} %</div>
+      <p class="field-hint">Taxe prélevée par l'Hôtel de Vente à chaque vente — fixée par le jeu, non modifiable.</p>
+    </div>
+
+    <div class="card mt-24">
+      <div class="flex-between">
+        <label class="field-label" style="margin:0">Serveurs</label>
+        <a href="/servers" class="badge badge-neutral">Gérer →</a>
+      </div>
+      <p class="field-hint" style="margin-top:6px">Catégories nommées pour séparer les prix/investissements — créer/renommer/changer de serveur actif se fait depuis la barre latérale ou la page dédiée.</p>
+    </div>
+
+    <div class="mt-24" style="display:flex; justify-content:flex-end; gap:12px">
+      <a href="/settings" class="btn">Annuler</a>
+      <button type="submit" class="btn btn-primary">Enregistrer</button>
+    </div>
+  </form>
+
+  <div class="card mt-24">
+    <label class="field-label">Thème</label>
+    <div class="theme-picker">
+      <button type="button" class="theme-opt" data-theme-set="encre"><span class="theme-swatch theme-swatch--encre"></span> Encre chaude</button>
+      <button type="button" class="theme-opt" data-theme-set="ardoise"><span class="theme-swatch theme-swatch--ardoise"></span> Ardoise</button>
+      <button type="button" class="theme-opt" data-theme-set="prune"><span class="theme-swatch theme-swatch--prune"></span> Prune</button>
+    </div>
+    <p class="field-hint">Aperçu instantané, mémorisé sur cet appareil (pas besoin d'Enregistrer).</p>
+  </div>
+
+  <script>
+    // Sélecteur de thème : surligne l'actif + change à la volée (window.setTheme
+    // vit dans la coquille base.html). Ré-exécuté à chaque affichage de la page
+    // (nav SPA) — les boutons sont recréés, donc pas de fuite d'écouteurs.
+    (function () {
+      var active = 'ardoise';
+      try { active = localStorage.getItem('kamas_theme') || 'ardoise'; } catch (e) {}
+      var btns = document.querySelectorAll('[data-theme-set]');
+      btns.forEach(function (btn) {
+        btn.classList.toggle('active', btn.getAttribute('data-theme-set') === active);
+        btn.addEventListener('click', function () {
+          window.setTheme(btn.getAttribute('data-theme-set'));
+          btns.forEach(function (b) { b.classList.toggle('active', b === btn); });
+        });
+      });
+    })();
+  </script>
+</div>
+{% endblock %}

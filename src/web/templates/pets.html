@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Familiers · Kamas{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Rentabilité des familiers</h1>
+  </div>
+  <span class="badge badge-success"><span class="confidence-dot" style="background:var(--success)"></span>Mise à jour auto</span>
+</div>
+
+<div class="section-title" id="pets-calculable-title"></div>
+<div class="table-card" id="pets-calculable-table"></div>
+<div id="pets-pager"></div>
+
+<div class="flex-between mt-24">
+  <div class="section-title" style="margin:0">En attente d'un second relevé de niveau</div>
+</div>
+<div class="table-card" id="pets-pending-table"></div>
+<div id="pets-pending-pager"></div>
+
+<script>
+  const initialPets = {{ pets | tojson }};
+  const initialPending = {{ pending | tojson }};
+
+  let lastPetsData = initialPets;
+  let lastPending = initialPending;
+  // null = ordre par défaut du serveur (bénéfice/mois décroissant, cf. ranking_key)
+  let petSort = null;
+  const petsPager = KamasPager('pets-pager', 20);
+  const petsPendingPager = KamasPager('pets-pending-pager', 20);
+
+  function formatK(v) {
+    return v === null || v === undefined ? '—' : String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+
+  function deltaHtml(v) {
+    if (v === null || v === undefined) return '—';
+    const cls = v < 0 ? 'delta-negative' : 'delta-positive';
+    const sign = v < 0 ? '-' : '+';
+    return `<span class="${cls}">${sign}${formatK(Math.abs(v))}</span>`;
+  }
+
+  function petFieldValue(p, key) {
+    if (key === 'netGain') return p.price_max_level - p.price_low_level;
+    return key === 'species_name' ? p[key].toLowerCase() : p[key];
+  }
+
+  function comparePetsForSort(a, b, key, dir) {
+    const av = petFieldValue(a, key);
+    const bv = petFieldValue(b, key);
+    const aNull = av === null || av === undefined;
+    const bNull = bv === null || bv === undefined;
+    if (aNull || bNull) return aNull === bNull ? 0 : (aNull ? 1 : -1);
+    if (typeof av === 'string') return dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    return dir === 'asc' ? av - bv : bv - av;
+  }
+
+  function petSortArrow(key) {
+    if (!petSort || petSort.key !== key) return '';
+    return petSort.dir === 'asc' ? ' ▲' : ' ▼';
+  }
+
+  function petSortableHeader(label, key, extraClass) {
+    return `<th class="sortable ${extraClass || ''}" onclick="sortPetsBy('${key}')">${label}${petSortArrow(key)}</th>`;
+  }
+
+  function sortPetsBy(key) {
+    if (petSort && petSort.key === key) {
+      petSort.dir = petSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      petSort = { key, dir: key === 'species_name' ? 'asc' : 'desc' };
+    }
+    petsPager.reset();
+    renderPetsCalculable(lastPetsData);
+  }
+
+  function renderPetsCalculable(pets) {
+    lastPetsData = pets;
+    const n = pets.length;
+    document.getElementById('pets-calculable-title').textContent =
+      `${n} familier${n !== 1 ? 's' : ''} avec au moins deux relevés de prix`;
+
+    const el = document.getElementById('pets-calculable-table');
+    if (!pets.length) {
+      el.innerHTML = '<div class="empty-state">Aucun familier calculable — il faut au moins deux relevés de niveau différents pour la même espèce.</div>';
+      return;
+    }
+    const sorted = petSort ? pets.slice().sort((a, b) => comparePetsForSort(a, b, petSort.key, petSort.dir)) : pets;
+    const rows = petsPager.apply(sorted, () => renderPetsCalculable(lastPetsData));
+    el.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            ${petSortableHeader('Familier', 'species_name')}
+            ${petSortableHeader('Coût XP estimé', 'feed_cost', 'num')}
+            ${petSortableHeader('Plus-value nette', 'netGain', 'num')}
+            ${petSortableHeader('Marge', 'margin', 'num')}
+            ${petSortableHeader('Vendus/mois', 'quantity_sold_30j', 'num')}
+            ${petSortableHeader('Bénéfice/mois', 'score', 'num')}
+            <th style="width:100px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((p) => `
+          <tr>
+            <td>
+              <a class="item-cell" href="/history?item_id=${p.species_item_id}&category=familier">
+                <div class="item-icon"><img src="/icons/${p.species_item_id}.png" alt="" onerror="this.style.display='none'" /></div>
+                <div class="item-name">${p.species_name}</div>
+              </a>
+            </td>
+            <td class="num kamas">${formatK(p.feed_cost)}</td>
+            <td class="num kamas">${formatK(p.price_max_level - p.price_low_level)}</td>
+            <td class="num">${deltaHtml(p.margin)}</td>
+            <td class="num">${p.quantity_sold_30j !== null && p.quantity_sold_30j !== undefined ? formatK(p.quantity_sold_30j) : '—'}</td>
+            <td class="num">${deltaHtml(p.score)}</td>
+            <td style="white-space:nowrap">
+              <span class="row-menu">
+                <button type="button" class="menu-trigger" title="Actions" aria-label="Actions">▾</button>
+                <div class="menu-panel" hidden>
+                  <button type="button" class="menu-item" data-suivre data-item-id="${p.species_item_id}" data-category="familier" data-price="${Math.round(p.feed_cost)}">Suivre</button>
+                </div>
+              </span>
+              <button type="button" class="btn btn-sm" onclick="atelierPrepare(${p.species_item_id}, 'pet', this)">+ Préparer</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  function renderPetsPending(pending) {
+    lastPending = pending;
+    const el = document.getElementById('pets-pending-table');
+    if (!pending.length) {
+      el.innerHTML = '<div class="empty-state">Rien en attente pour l\'instant.</div>';
+      document.getElementById('pets-pending-pager').innerHTML = '';
+      return;
+    }
+    const rows = petsPendingPager.apply(pending, () => renderPetsPending(lastPending));
+    el.innerHTML = `
+      <table>
+        <tbody>
+          ${rows.map((pd) => `
+          <tr>
+            <td style="width:50%">
+              <a class="item-cell" href="/history?item_id=${pd.item_id}&category=familier">
+                <div class="item-icon"><img src="/icons/${pd.item_id}.png" alt="" onerror="this.style.display='none'" /></div>
+                <div class="item-name">${pd.name}</div>
+              </a>
+            </td>
+            <td><span class="badge badge-neutral">${pd.levels.length} niveau${pd.levels.length !== 1 ? 'x' : ''} observé${pd.levels.length !== 1 ? 's' : ''} (${pd.levels.join(', ')})</span></td>
+            <td class="item-sub" style="text-align:right">Marge non calculable</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  function refreshPets() {
+    fetch('/api/pets')
+      .then((r) => r.json())
+      .then((data) => {
+        renderPetsCalculable(data.pets);
+        renderPetsPending(data.pending);
+      })
+      .catch(() => {});
+  }
+
+  // Exposé sur window (même raison que sortCraftsBy, cf. crafts.html/base.html).
+  window.sortPetsBy = sortPetsBy;
+  renderPetsCalculable(initialPets);
+  renderPetsPending(initialPending);
+  setInterval(refreshPets, 2000);
+</script>
+{% endblock %}

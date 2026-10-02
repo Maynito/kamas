@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Serveurs · Kamas{% endblock %}
+{% block content %}
+<div style="max-width:900px">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Serveurs</h1>
+    </div>
+  </div>
+
+  {% if error_message %}
+  <div class="warning-banner" style="margin-bottom:20px">
+    <span>⚠️</span>
+    <div>{{ error_message }}</div>
+  </div>
+  {% endif %}
+
+  <div class="table-card table-card--overflow-visible">
+    <table>
+      <thead><tr><th>Nom</th><th style="width:380px"></th></tr></thead>
+      <tbody>
+        {% for s in servers %}
+        <tr>
+          <td>
+            {{ s[1] }}
+            {% if s[0] == active_id %}<span class="badge badge-success" style="margin-left:8px">Actif</span>{% endif %}
+          </td>
+          <td>
+            <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap">
+              <form method="post" action="/servers/{{ s[0] }}/rename" style="display:flex; gap:6px">
+                <input class="text-input text-input-sm" type="text" name="name" value="{{ s[1] }}" style="width:150px" required />
+                <button type="submit" class="btn btn-sm">Renommer</button>
+              </form>
+              <form method="post" action="/servers/{{ s[0] }}/delete" onsubmit="return confirm('Supprimer ce serveur ?');">
+                <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card mt-24">
+    <div class="section-title" style="margin:0 0 12px">Ajouter un serveur</div>
+    <form method="post" action="/servers" style="display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap">
+      <div style="flex:1; min-width:200px">
+        <label class="field-label" for="name">Nom</label>
+        <input class="text-input" type="text" id="name" name="name" placeholder="ex. Dodge, Compte mule..." required />
+      </div>
+      <button type="submit" class="btn btn-primary">Créer</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

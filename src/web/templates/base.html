@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Kamas{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/theme.css?v={{ static_version }}" />
+  <script>
+    // Applique le thème mémorisé (data-theme sur <html>) AVANT le rendu du body
+    // pour éviter tout flash du thème par défaut. Changé/mémorisé par
+    // window.setTheme (cf. plus bas) depuis le sélecteur des Réglages.
+    (function () {
+      try {
+        var t = localStorage.getItem('kamas_theme');
+        if (t) document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
+  <script>
+    // === Navigation SPA légère ==========================================
+    // But : supprimer le micro à-coup de la pluie d'icônes à chaque
+    // changement de page. La pluie vit dans la coquille (hors de .main) ;
+    // si on ne recharge JAMAIS le document mais qu'on remplace uniquement le
+    // contenu de .main, ses <img> ne sont jamais détruits → l'animation ne
+    // subit aucune interruption. Repli automatique sur la navigation
+    // classique du navigateur à la moindre erreur : le site ne peut pas
+    // finir cassé, au pire il se comporte comme avant (rechargement complet).
+    //
+    // Ce script DOIT s'exécuter avant le <script> de contenu de la première
+    // page (qui vit dans .main, plus bas dans le document) — d'où sa place
+    // dans <head> — pour que l'emballage de setInterval ci-dessous capture
+    // aussi l'intervalle de rafraîchissement posé au tout premier chargement.
+    (function () {
+      // -- suivi des setInterval posés par les pages, pour pouvoir les
+      //    arrêter avant de remplacer le contenu (sinon l'auto-refresh de la
+      //    page quittée continuerait de tourner dans le vide, en double). --
+      var pageTimers = [];
+      var nativeSetInterval = window.setInterval.bind(window);
+      window.setInterval = function (fn, ms) {
+        var id = nativeSetInterval(fn, ms);
+        pageTimers.push(id);
+        return id;
+      };
+      function clearPageTimers() {
+        for (var i = 0; i < pageTimers.length; i++) clearInterval(pageTimers[i]);
+        pageTimers = [];
+      }
+
+      // -- exécute les <script> inline d'un contenu fraîchement injecté.
+      //    innerHTML n'exécute PAS les <script> : on récupère leur texte et on
+      //    l'exécute nous-mêmes. Tous les scripts inline d'une page sont joints
+      //    puis exécutés dans UNE SEULE portée isolée (new Function) : isolée
+      //    pour que les `const`/`let` de niveau supérieur ne collisionnent pas
+      //    en revisitant une page (le document n'étant jamais rechargé, un
+      //    `const` global relancé lèverait "Identifier already declared") ;
+      //    une seule pour que des scripts d'une même page qui se partagent des
+      //    symboles (ex. Historique en a deux) continuent de fonctionner comme
+      //    en portée globale au premier chargement. Les 2 seules fonctions
+      //    appelées par un onclick inline (sortCraftsBy/sortPetsBy) sont
+      //    exposées sur window par leurs pages. Lève en cas d'erreur → repli. --
+      function runContentScripts(container) {
+        var nodes = container.querySelectorAll('script');
+        var inline = [];
+        for (var i = 0; i < nodes.length; i++) {
+          if (nodes[i].src) {
+            var el = document.createElement('script');
+            el.src = nodes[i].src;
+            document.head.appendChild(el);
+          } else {
+            inline.push(nodes[i].textContent);
+          }
+        }
+        if (inline.length) (new Function(inline.join('\n;\n')))();
+      }
+
+      var navToken = 0;
+
+      function applyDocument(doc) {
+        var newMain = doc.querySelector('.main');
+        var curMain = document.querySelector('.main');
+        if (!newMain || !curMain) return false;
+        clearPageTimers();
+        if (doc.title) document.title = doc.title;
+        curMain.innerHTML = newMain.innerHTML;
+        // recale le lien de nav actif d'après le doc récupéré (réutilise la
+        // logique serveur `active == ...` plutôt que de re-déduire côté client)
+        var links = document.querySelectorAll('.sidebar .nav-link');
+        for (var i = 0; i < links.length; i++) links[i].classList.remove('active');
+        var newActive = doc.querySelector('.sidebar .nav-link.active');
+        if (newActive) {
+          var href = newActive.getAttribute('href');
+          for (var j = 0; j < links.length; j++) {
+            if (links[j].getAttribute('href') === href) { links[j].classList.add('active'); break; }
+          }
+        }
+        runContentScripts(curMain); // peut lever → attrapé par navigate()
+        if (window.kamasFormatPrices) window.kamasFormatPrices(curMain);
+        return true;
+      }
+
+      function navigate(url, push) {
+        var token = ++navToken;
+        fetch(url, { credentials: 'same-origin', headers: { 'X-SPA': '1' } })
+          .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.text();
+          })
+          .then(function (html) {
+            if (token !== navToken) return; // une nav plus récente a gagné
+            var doc = new DOMParser().parseFromString(html, 'text/html');
+            if (!applyDocument(doc)) { window.location.href = url; return; }
+            if (push) { history.pushState({ spa: true }, '', url); window.scrollTo(0, 0); }
+          })
+          .catch(function () { window.location.href = url; }); // repli robuste
+      }
+
+      // -- interception des clics sur les liens internes GET --
+      document.addEventListener('click', function (e) {
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        var a = e.target && e.target.closest ? e.target.closest('a') : null;
+        if (!a) return;
+        var href = a.getAttribute('href');
+        if (!href) return;
+        if (a.target === '_blank' || a.hasAttribute('download') || a.hasAttribute('data-no-spa')) return;
+        // uniquement les chemins internes absolus ("/...") ; exclut ancres (#),
+        // mailto/tel, http(s) externes et protocole-relatif ("//hôte")
+        if (href.charAt(0) !== '/' || href.charAt(1) === '/') return;
+        e.preventDefault();
+        navigate(href, true);
+      });
+
+      // -- boutons précédent/suivant du navigateur --
+      window.addEventListener('popstate', function () {
+        navigate(location.pathname + location.search, false);
+      });
+    })();
+  </script>
+  <script>
+    // Pagination client-side réutilisable (~20 items/page), partagée par les
+    // onglets à longue liste (Prix, Crafts, Familiers, Historique, Suivis).
+    // Définie dans le <head> (une seule fois) → disponible pour le script de
+    // chaque page, y compris après une navigation SPA (le <head> n'est pas
+    // ré-exécuté, mais window.KamasPager persiste). Usage :
+    //   var pager = KamasPager('mon-pager-id', 20);
+    //   var pageItems = pager.apply(tableauDejaTriéFiltré, rerenderFn);
+    //   // rerenderFn est rappelée au changement de page (elle doit refaire
+    //   // apply() avec les mêmes données) ; pager.reset() revient page 1.
+    // Nombre d'items par page : préférence GLOBALE (mémorisée entre pages et
+    // visites via localStorage), modifiable par le petit sélecteur du pager.
+    window.KAMAS_PAGE_SIZES = [10, 20, 50, 100];
+    window.kamasStoredPageSize = function (fallback) {
+      try { var n = parseInt(localStorage.getItem('kamas_page_size'), 10); if (n) return n; } catch (e) {}
+      return fallback || 20;
+    };
+    window.kamasSizeSelect = function (size) {
+      return '<label class="item-sub" style="display:inline-flex;align-items:center;gap:6px">Par page' +
+        '<select data-pgsize class="text-input text-input-sm" style="width:64px">' +
+        window.KAMAS_PAGE_SIZES.map(function (o) {
+          return '<option value="' + o + '"' + (o === size ? ' selected' : '') + '>' + o + '</option>';
+        }).join('') + '</select></label>';
+    };
+    window.KamasPager = function (pagerElId, pageSize) {
+      var page = 0;
+      var size = window.kamasStoredPageSize(pageSize);
+      return {
+        reset: function () { page = 0; },
+        page: function () { return page; },
+        size: function () { return size; },
+        apply: function (items, rerender) {
+          items = items || [];
+          var pages = Math.max(1, Math.ceil(items.length / size));
+          if (page > pages - 1) page = pages - 1;
+          if (page < 0) page = 0;
+          var el = document.getElementById(pagerElId);
+          if (el) {
+            // Rien à paginer tant que ça tient dans la plus petite page.
+            if (items.length <= window.KAMAS_PAGE_SIZES[0]) {
+              el.innerHTML = '';
+            } else {
+              var nav = pages > 1
+                ? '<button type="button" class="btn btn-sm" data-pg="prev"' + (page === 0 ? ' disabled' : '') + '>‹ Précédent</button>' +
+                  '<span class="item-sub">Page ' + (page + 1) + ' / ' + pages + ' · ' + items.length + ' éléments</span>' +
+                  '<button type="button" class="btn btn-sm" data-pg="next"' + (page >= pages - 1 ? ' disabled' : '') + '>Suivant ›</button>'
+                : '<span class="item-sub">' + items.length + ' éléments</span>';
+              el.innerHTML =
+                '<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:14px 2px 2px">' +
+                  '<div style="display:flex;align-items:center;gap:14px">' + nav + '</div>' +
+                  window.kamasSizeSelect(size) +
+                '</div>';
+              Array.prototype.forEach.call(el.querySelectorAll('button[data-pg]'), function (b) {
+                b.addEventListener('click', function () {
+                  page += (b.getAttribute('data-pg') === 'next' ? 1 : -1);
+                  rerender();
+                });
+              });
+              var sel = el.querySelector('select[data-pgsize]');
+              if (sel) sel.addEventListener('change', function () {
+                size = parseInt(this.value, 10) || 20;
+                page = 0;
+                try { localStorage.setItem('kamas_page_size', size); } catch (e) {}
+                rerender();
+              });
+            }
+          }
+          return items.slice(page * size, page * size + size);
+        }
+      };
+    };
+
+    // Formate les champs de PRIX (class="price-input") avec des séparateurs de
+    // milliers (« 1 000 » au lieu de « 1000 ») pendant la saisie, et retire les
+    // espaces avant l'envoi du formulaire. Les <input type=number> n'acceptent
+    // pas d'espaces -> on bascule en text + inputmode numeric. Idempotent par
+    // élément ; rappelé après chaque navigation SPA (cf. applyDocument).
+    window.kamasFormatThousands = function (digits) {
+      return String(digits).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    };
+    window.kamasFormatPrices = function (root) {
+      root = root || document;
+      var inputs = root.querySelectorAll('input.price-input');
+      Array.prototype.forEach.call(inputs, function (inp) {
+        if (inp._thousandsInit) return;
+        inp._thousandsInit = true;
+        inp.type = 'text';
+        inp.setAttribute('inputmode', 'numeric');
+        inp.setAttribute('autocomplete', 'off');
+        function fmt() {
+          var d = inp.value.replace(/\D/g, '');
+          inp.value = d ? window.kamasFormatThousands(d) : '';
+        }
+        fmt();
+        inp.addEventListener('input', function () {
+          var caretFromEnd = inp.value.length - inp.selectionEnd;
+          fmt();
+          var pos = Math.max(0, inp.value.length - caretFromEnd);
+          try { inp.setSelectionRange(pos, pos); } catch (e) {}
+        });
+        if (inp.form && !inp.form._thousandsStrip) {
+          inp.form._thousandsStrip = true;
+          inp.form.addEventListener('submit', function () {
+            Array.prototype.forEach.call(inp.form.querySelectorAll('input.price-input'), function (pi) {
+              pi.value = pi.value.replace(/\s/g, '');
+            });
+          });
+        }
+      });
+    };
+    document.addEventListener('DOMContentLoaded', function () { window.kamasFormatPrices(document); });
+  </script>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <!-- Items iconiques Dofus (oeufs Dofus, Bwaks élémentaires, Chacha, Wabbit,
+       Tofus, Gelano, Goultard, panoplies Bouftou/Craqueleur, ressources
+       classiques). IDs = item_id réels vérifiés présents dans data/icons/ et
+       inspectés visuellement (planche-contact). Mix volontaire des catégories :
+       oeufs + familiers + équipements + ressources. Les plus colorés sont
+       placés sur les grandes fentes opaques (premier plan). -->
+  <div class="icon-rain icon-rain-left" aria-hidden="true">
+    <img src="/icons/21707.png" alt="" onerror="this.style.display='none'" data-dur="18" style="left:3%; width:44px; height:44px; opacity:.48" />
+    <img src="/icons/289.png" alt="" onerror="this.style.display='none'" data-dur="30" style="left:9%; width:24px; height:24px; opacity:.24" />
+    <img src="/icons/2074.png" alt="" onerror="this.style.display='none'" data-dur="24" style="left:15%; width:34px; height:34px; opacity:.36" />
+    <img src="/icons/1728.png" alt="" onerror="this.style.display='none'" data-dur="27" style="left:21%; width:28px; height:28px; opacity:.28" />
+    <img src="/icons/65.png" alt="" onerror="this.style.display='none'" data-dur="15" style="left:27%; width:50px; height:50px; opacity:.58" />
+    <img src="/icons/395.png" alt="" onerror="this.style.display='none'" data-dur="33" style="left:34%; width:20px; height:20px; opacity:.22" />
+    <img src="/icons/2076.png" alt="" onerror="this.style.display='none'" data-dur="28" style="left:40%; width:26px; height:26px; opacity:.30" />
+    <img src="/icons/2411.png" alt="" onerror="this.style.display='none'" data-dur="21" style="left:46%; width:36px; height:36px; opacity:.34" />
+    <img src="/icons/21695.png" alt="" onerror="this.style.display='none'" data-dur="20" style="left:53%; width:40px; height:40px; opacity:.44" />
+    <img src="/icons/307.png" alt="" onerror="this.style.display='none'" data-dur="29" style="left:59%; width:24px; height:24px; opacity:.26" />
+    <img src="/icons/303.png" alt="" onerror="this.style.display='none'" data-dur="32" style="left:65%; width:22px; height:22px; opacity:.20" />
+    <img src="/icons/21698.png" alt="" onerror="this.style.display='none'" data-dur="17" style="left:72%; width:46px; height:46px; opacity:.48" />
+    <img src="/icons/2416.png" alt="" onerror="this.style.display='none'" data-dur="16" style="left:78%; width:48px; height:48px; opacity:.52" />
+    <img src="/icons/12975.png" alt="" onerror="this.style.display='none'" data-dur="26" style="left:84%; width:30px; height:30px; opacity:.28" />
+    <img src="/icons/14077.png" alt="" onerror="this.style.display='none'" data-dur="23" style="left:90%; width:32px; height:32px; opacity:.32" />
+    <img src="/icons/2469.png" alt="" onerror="this.style.display='none'" data-dur="19" style="left:96%; width:38px; height:38px; opacity:.40" />
+  </div>
+  <div class="icon-rain icon-rain-right" aria-hidden="true">
+    <img src="/icons/21701.png" alt="" onerror="this.style.display='none'" data-dur="17" style="left:4%; width:46px; height:46px; opacity:.46" />
+    <img src="/icons/421.png" alt="" onerror="this.style.display='none'" data-dur="31" style="left:10%; width:24px; height:24px; opacity:.24" />
+    <img src="/icons/2075.png" alt="" onerror="this.style.display='none'" data-dur="25" style="left:16%; width:30px; height:30px; opacity:.30" />
+    <img src="/icons/2425.png" alt="" onerror="this.style.display='none'" data-dur="24" style="left:22%; width:32px; height:32px; opacity:.34" />
+    <img src="/icons/593.png" alt="" onerror="this.style.display='none'" data-dur="30" style="left:28%; width:22px; height:22px; opacity:.22" />
+    <img src="/icons/21705.png" alt="" onerror="this.style.display='none'" data-dur="14" style="left:35%; width:52px; height:52px; opacity:.60" />
+    <img src="/icons/2077.png" alt="" onerror="this.style.display='none'" data-dur="28" style="left:41%; width:26px; height:26px; opacity:.26" />
+    <img src="/icons/279.png" alt="" onerror="this.style.display='none'" data-dur="29" style="left:47%; width:26px; height:26px; opacity:.24" />
+    <img src="/icons/21681.png" alt="" onerror="this.style.display='none'" data-dur="22" style="left:53%; width:36px; height:36px; opacity:.36" />
+    <img src="/icons/6957.png" alt="" onerror="this.style.display='none'" data-dur="21" style="left:60%; width:38px; height:38px; opacity:.38" />
+    <img src="/icons/7706.png" alt="" onerror="this.style.display='none'" data-dur="26" style="left:66%; width:28px; height:28px; opacity:.28" />
+    <img src="/icons/8000.png" alt="" onerror="this.style.display='none'" data-dur="33" style="left:72%; width:22px; height:22px; opacity:.20" />
+    <img src="/icons/2440.png" alt="" onerror="this.style.display='none'" data-dur="18" style="left:78%; width:44px; height:44px; opacity:.46" />
+    <img src="/icons/1748.png" alt="" onerror="this.style.display='none'" data-dur="16" style="left:84%; width:48px; height:48px; opacity:.44" />
+    <img src="/icons/11858.png" alt="" onerror="this.style.display='none'" data-dur="27" style="left:90%; width:30px; height:30px; opacity:.26" />
+    <img src="/icons/892.png" alt="" onerror="this.style.display='none'" data-dur="23" style="left:96%; width:36px; height:36px; opacity:.32" />
+  </div>
+  <script>
+    // Fait tomber chaque icône EN PHASE AVEC L'HORLOGE MURALE (Date.now())
+    // plutôt qu'avec un animation-delay fixe codé en dur. Conséquence directe :
+    // à chaque navigation (chaque page est un rechargement complet côté
+    // serveur), l'icône réapparaît exactement là où elle SERAIT si l'animation
+    // n'avait jamais été interrompue — la pluie n'est donc jamais "remise à
+    // zéro" quand on change de page. Un animation-delay fixe, lui, repartait de
+    // la même phase à chaque chargement, d'où le "reset" visible à chaque clic.
+    // L'offset par icône est FIXE (dérivé de l'index, JAMAIS aléatoire) : un
+    // tirage aléatoire à chaque chargement ferait au contraire sauter les
+    // icônes d'une position à l'autre à chaque navigation.
+    (function () {
+      var imgs = document.querySelectorAll('.icon-rain img');
+      var nowSec = Date.now() / 1000;
+      for (var i = 0; i < imgs.length; i++) {
+        var img = imgs[i];
+        var dur = parseFloat(img.getAttribute('data-dur')) || 20;
+        var offset = i * 2.37;
+        var phase = (((nowSec + offset) % dur) + dur) % dur;
+        img.style.animationDuration = dur + 's';
+        img.style.animationDelay = -phase + 's';
+      }
+    })();
+  </script>
+  <div class="toast" id="kamas-toast" role="status" aria-live="polite"></div>
+  <script>
+    // Toast global + bouton "+ Préparer" (fetch, sans recharger la page).
+    // Définis sur window ici (coquille persistante) : dispo sur toutes les
+    // pages, y compris après une navigation SPA.
+    // Sélecteur de thème (Réglages) : pose data-theme sur <html> + mémorise.
+    window.setTheme = function (name) {
+      document.documentElement.setAttribute('data-theme', name);
+      try { localStorage.setItem('kamas_theme', name); } catch (e) {}
+    };
+    window.showToast = function (msg, ok) {
+      var t = document.getElementById('kamas-toast');
+      if (!t) return;
+      t.textContent = msg;
+      t.className = 'toast show' + (ok === false ? ' toast-error' : '');
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(function () { t.className = 'toast'; }, 2600);
+    };
+    window.atelierPrepare = function (itemId, kind, btn) {
+      var qtyEl = btn.parentElement.querySelector('.prep-qty');
+      var qty = Math.max(1, parseInt(qtyEl && qtyEl.value, 10) || 1);
+      var body = new URLSearchParams({ item_id: itemId, kind: kind, quantity: qty });
+      fetch('/atelier/add', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.ok) window.showToast('« ' + d.name + ' » ajouté à l\'Atelier (total ×' + d.total + ')');
+          else window.showToast('Ajout impossible', false);
+        })
+        .catch(function () { window.showToast('Erreur réseau', false); });
+    };
+
+    // "Suivre" : ajoute DIRECTEMENT l'objet à Suivis (équipement -> étape
+    // forgemagie, décidée côté API selon le super_type) via fetch — plus de page
+    // /suivis/new intermédiaire, aucune redirection, juste un toast. Même
+    // comportement que "+ Préparer" ci-dessus et que "Crafté -> Suivis" de
+    // l'Atelier. Le prix d'achat = prix suggéré (coût de craft/HDV) ; il reste
+    // ajustable ensuite dans la forgemagie.
+    window.suivreAdd = function (itemId, category, suggestedPrice) {
+      var body = new URLSearchParams({ item_id: itemId, category: category || 'ressource', quantity: 1 });
+      if (suggestedPrice && Number(suggestedPrice) > 0) body.set('buy_price_kamas', suggestedPrice);
+      fetch('/suivis/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'fetch' },
+        body: body,
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.ok) window.showToast('Ajouté à Suivis' + (category === 'equipement' ? ' (forgemagie)' : ''));
+          else window.showToast(d && d.message ? d.message : 'Ajout impossible', false);
+        })
+        .catch(function () { window.showToast('Erreur réseau', false); });
+    };
+
+    // Menu déroulant générique (bouton "▾" à fond transparent). Délégué sur
+    // document (coquille persistante) : survit à la nav SPA ET au ré-affichage
+    // des tableaux toutes les 2 s (les boutons sont recréés, l'écouteur non).
+    // Panneau positionné en position:fixed pour ne pas être coupé par un
+    // conteneur en overflow (ex. .table-card scrollable).
+    (function () {
+      var openPanel = null;
+      function closeMenu() { if (openPanel) { openPanel.hidden = true; openPanel = null; } }
+      document.addEventListener('click', function (e) {
+        var trigger = e.target.closest('.menu-trigger');
+        if (trigger) {
+          e.preventDefault();
+          var panel = trigger.parentElement.querySelector('.menu-panel');
+          if (panel === openPanel) { closeMenu(); return; }
+          closeMenu();
+          var r = trigger.getBoundingClientRect();
+          panel.style.position = 'fixed';
+          panel.style.top = (r.bottom + 4) + 'px';
+          panel.style.left = 'auto';
+          panel.style.right = (window.innerWidth - r.right) + 'px';
+          panel.hidden = false;
+          openPanel = panel;
+          return;
+        }
+        var item = e.target.closest('.menu-item[data-suivre]');
+        if (item) {
+          window.suivreAdd(item.getAttribute('data-item-id'), item.getAttribute('data-category'), item.getAttribute('data-price'));
+          closeMenu();
+          return;
+        }
+        closeMenu();  // clic ailleurs -> ferme
+      });
+      window.addEventListener('scroll', closeMenu, true);  // capture: ferme aussi au scroll d'un conteneur interne
+    })();
+  </script>
+  <div class="app-shell">
+    <nav class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">K</div>
+        <div>
+          <div class="brand-name">Kamas</div>
+          <div class="brand-sub">Suivi de prix Dofus</div>
+        </div>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">Vue d'ensemble</div>
+        <a class="nav-link {{ 'active' if active == 'dashboard' else '' }}" href="/">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none"><path d="M3 10.5 10 4l7 6.5M5 9v7h10V9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Dashboard
+        </a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">Rentabilité</div>
+        <a class="nav-link {{ 'active' if active == 'crafts' else '' }}" href="/crafts">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none"><path d="M3 6.5 10 3l7 3.5-7 3.5-7-3.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M3 10l7 3.5 7-3.5M3 13.5 10 17l7-3.5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+          Crafts
+        </a>
+        <a class="nav-link {{ 'active' if active == 'pets' else '' }}" href="/pets">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="8" r="3.2" stroke="currentColor" stroke-width="1.6"/><path d="M4.5 17c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Familiers
+        </a>
+        <a class="nav-link {{ 'active' if active == 'elevage' else '' }}" href="/elevage">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="9" rx="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M3 11h14M10 7v9" stroke="currentColor" stroke-width="1.6"/></svg>
+          Élevage
+        </a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">Données</div>
+        <a class="nav-link {{ 'active' if active == 'prices' else '' }}" href="/prices">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none"><path d="M6 3.5h8M6 3.5v13l4-2.5 4 2.5v-13" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+          Prix
+        </a>
+        <a class="nav-link {{ 'active' if active == 'history' else '' }}" href="/history">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none"><path d="M3 15 7 9l4 3 6-8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Historique
+        </a>
+        <a class="nav-link {{ 'active' if active == 'atelier' else '' }}" href="/atelier">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none"><path d="M11.5 3.5 15 7l-2 2-3.5-3.5 2-2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="m9.5 5.5-6 6 2 2 6-6" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 11.5 16.5 15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Atelier
+        </a>
+        <a class="nav-link {{ 'active' if active == 'suivis' else '' }}" href="/suivis">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none"><path d="M4 17V8m4 9V4m4 13v-6m4 6V9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Suivis
+        </a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">Système</div>
+        <a class="nav-link {{ 'active' if active == 'settings' else '' }}" href="/settings">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="2.6" stroke="currentColor" stroke-width="1.6"/><path d="M10 3.5v2M10 14.5v2M16.5 10h-2M5.5 10h-2M14.6 5.4l-1.4 1.4M6.8 13.2l-1.4 1.4M14.6 14.6l-1.4-1.4M6.8 6.8 5.4 5.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Réglages
+        </a>
+        <a class="nav-link {{ 'active' if active == 'servers' else '' }}" href="/servers">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none"><rect x="3.5" y="4" width="13" height="4.5" rx="1" stroke="currentColor" stroke-width="1.6"/><rect x="3.5" y="11.5" width="13" height="4.5" rx="1" stroke="currentColor" stroke-width="1.6"/></svg>
+          Serveurs
+        </a>
+        <div style="padding:8px 12px 0">
+          <form id="server-switcher-form" method="post" action="/servers/active">
+            <input type="hidden" name="server_id" id="server-switcher-value" value="" />
+            <select class="select" id="server-switcher-select" style="width:100%; font-size:13px; padding:8px 10px"
+                    onchange="document.getElementById('server-switcher-value').value = this.value; document.getElementById('server-switcher-form').submit();">
+            </select>
+          </form>
+        </div>
+      </div>
+
+      <div class="sidebar-footer" id="freshness-badge" title="Fraîcheur des données (dernier relevé de prix)">
+        <span class="status-dot"></span>
+        <span id="freshness-text">Données…</span>
+      </div>
+    </nav>
+    <script>
+      fetch('/api/servers').then((r) => r.json()).then((data) => {
+        const select = document.getElementById('server-switcher-select');
+        if (!select) return;
+        select.innerHTML = data.servers.map((s) =>
+          `<option value="${s.id}" ${s.id === data.active_id ? 'selected' : ''}>${s.name}</option>`
+        ).join('');
+      }).catch(() => {});
+
+      // Badge de fraîcheur : dernier relevé de prix. Le front ne collecte pas
+      // (c'est le rôle du collector, hors ligne le plus souvent) — on montre donc
+      // "à jour quand le back tourne, sinon page visitable". Vit dans la sidebar
+      // (jamais remplacée par la nav SPA), donc un fetch au chargement + un
+      // rafraîchissement lent suffisent, sans reset à chaque navigation.
+      (function () {
+        var dot = document.querySelector('#freshness-badge .status-dot');
+        var text = document.getElementById('freshness-text');
+        function ago(iso) {
+          if (!iso) return null;
+          var secs = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+          if (secs < 90) return "il y a moins d'une minute";
+          var mins = Math.round(secs / 60);
+          if (mins < 60) return 'il y a ' + mins + ' min';
+          var hours = Math.round(mins / 60);
+          if (hours < 48) return 'il y a ' + hours + ' h';
+          return 'il y a ' + Math.round(hours / 24) + ' j';
+        }
+        function refresh() {
+          fetch('/api/status').then(function (r) { return r.json(); }).then(function (d) {
+            var label = ago(d && d.last_capture_at);
+            if (!text || !dot) return;
+            if (label) { text.textContent = 'Données ' + label; dot.style.background = ''; dot.style.opacity = '1'; }
+            else { text.textContent = 'Aucune donnée'; dot.style.opacity = '0.35'; }
+          }).catch(function () {
+            if (text) text.textContent = 'API injoignable';
+            if (dot) dot.style.opacity = '0.35';
+          });
+        }
+        refresh();
+        setInterval(refresh, 60000);
+      })();
+    </script>
+    <main class="main">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

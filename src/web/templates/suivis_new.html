@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Ajouter un suivi · Kamas{% endblock %}
+{% block content %}
+<div style="max-width:560px">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Ajouter au suivi</h1>
+    </div>
+  </div>
+
+  {% if error_message %}
+  <div class="warning-banner" style="margin-bottom:20px">
+    <span>⚠️</span>
+    <div>{{ error_message }}</div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="item-cell" style="margin-bottom:20px">
+      <div class="item-icon"><img src="/icons/{{ item_id }}.png" alt="" onerror="this.style.display='none'" /></div>
+      <div class="item-name" style="font-size:16px">{{ item_name or ("Objet #" ~ item_id) }}</div>
+    </div>
+
+    <form method="post" action="/suivis/add">
+      <input type="hidden" name="item_id" value="{{ item_id }}" />
+      <input type="hidden" name="category" value="{{ category }}" />
+      {% if atelier_id is not none %}<input type="hidden" name="atelier_id" value="{{ atelier_id }}" />{% endif %}
+      <div class="mt-24" style="display:flex; gap:16px; flex-wrap:wrap">
+        <div style="flex:1; min-width:140px">
+          <label class="field-label" for="quantity">Quantité</label>
+          <input class="text-input" type="number" id="quantity" name="quantity" min="1" step="1" value="{{ quantity }}" required />
+        </div>
+        <div style="flex:2; min-width:200px">
+          <label class="field-label" for="buy_price_kamas">Prix d'achat total (kamas)</label>
+          <input class="text-input price-input" type="number" id="buy_price_kamas" name="buy_price_kamas" min="1" step="1"
+                 value="{{ buy_price_kamas or '' }}" required />
+        </div>
+      </div>
+      <p class="field-hint">Prix TOTAL pour la quantité indiquée (pas au kamas près) — si tu changes la quantité, pense à ajuster le prix en conséquence.</p>
+
+      <div class="mt-24">
+        <label class="field-label" for="sell_price_kamas">Prix de vente visé (optionnel)</label>
+        <input class="text-input price-input" type="number" id="sell_price_kamas" name="sell_price_kamas" min="1" step="1"
+               value="{{ sell_price_kamas or '' }}" />
+        <p class="field-hint">Si tu sais déjà à combien tu comptes le revendre — laisse vide sinon, tu pourras le renseigner plus tard depuis Suivis. Ça ne marque PAS l'item comme vendu, juste un prix de départ.</p>
+      </div>
+
+      <div class="mt-24" style="display:flex; justify-content:flex-end; gap:12px">
+        <a href="javascript:history.back()" class="btn">Annuler</a>
+        <button type="submit" class="btn btn-primary">Ajouter au suivi</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

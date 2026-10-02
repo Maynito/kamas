@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Base de données et données volumineuses générées par les scripts de sync
+# (icônes, cache API) : reproductibles via `python src/sync/dofusdb_sync.py`,
+# pas la peine de les versionner.
+data/

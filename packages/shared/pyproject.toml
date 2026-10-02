@@ -1,0 +1,14 @@
+[project]
+name = "kamas-shared"
+version = "0.1.0"
+description = "Contrat d'ingestion partagé entre le Collector et la Price API de Kamas."
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2,<3"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["kamas_shared*"]

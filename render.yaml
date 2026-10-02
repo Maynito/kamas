@@ -1,0 +1,56 @@
+# Blueprint de déploiement Render — Postgres managé + Price API + Front.
+# (Le Collector n'est PAS déployé : il tourne chez le joueur, sous Windows, et
+#  POST vers l'URL publique de l'API — c'est tout l'intérêt du découpage.)
+#
+# Déploiement : connecter le repo sur render.com → "New Blueprint" → ce fichier.
+# HTTPS est fourni automatiquement par Render. Les secrets marqués `sync: false`
+# sont à renseigner dans le dashboard, puis les clés API se créent via :
+#   render shell kamas-api  →  python scripts/manage_keys.py create --scope read --label pote
+#
+# Seed des données : la base Postgres démarre VIDE (les data/ ne sont pas dans
+# l'image). Pour la peupler depuis un SQLite local :
+#   DATABASE_URL="<External Database URL Render>" python services/api/scripts/seed_from_sqlite.py
+# ou laisser le collector alimenter les prix au fil de l'eau.
+
+databases:
+  - name: kamas-db
+    plan: free
+    databaseName: kamas
+    user: kamas
+
+services:
+  - type: web
+    name: kamas-api
+    runtime: docker
+    dockerfilePath: services/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /v1/docs
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: kamas-db
+          property: connectionString    # postgresql://... -> normalisé en +psycopg par db.py
+      - key: KAMAS_REQUIRE_AUTH
+        value: "1"
+      - key: KAMAS_CORS_ORIGINS
+        value: "*"                       # restreindre à l'origine du site du pote en prod
+      - key: KAMAS_RATE_LIMIT
+        value: "120"
+      - key: KAMAS_RATE_WINDOW
+        value: "60"
+      - key: KAMAS_INGEST_KEY
+        sync: false                      # secret partagé du collector (dashboard)
+
+  - type: web
+    name: kamas-front
+    runtime: docker
+    dockerfilePath: services/front/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: KAMAS_API_URL
+        fromService:
+          type: web
+          name: kamas-api
+          property: hostport             # host:port interne de l'API
+      - key: KAMAS_API_KEY
+        sync: false                      # clé owner du front (dashboard)

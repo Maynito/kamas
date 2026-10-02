@@ -1,0 +1,7 @@
+# Front Kamas — présentation (Jinja) qui appelle la Price API via httpx.
+# Aucune dépendance DB/vision : c'est un pur client HTTP + rendu.
+fastapi==0.139.2
+uvicorn==0.51.0
+Jinja2==3.1.6
+python-multipart==0.0.32
+httpx>=0.27,<0.29

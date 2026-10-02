@@ -1,0 +1,66 @@
+# Kamas — API + Front + Postgres (Phase 3).
+# Le Collector (capture + vision) tourne HORS compose, nativement sous Windows,
+# et POST ses relevés à l'API (cf. services/collector). La Price API est seule
+# propriétaire de la base — ici Postgres (le FS d'un PaaS étant éphémère, un
+# fichier SQLite y serait effacé à chaque redeploy).
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: kamas
+      POSTGRES_PASSWORD: kamas
+      POSTGRES_DB: kamas
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kamas"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    ports:
+      - "8100:8100"
+    environment:
+      # Bascule Postgres : db.py et alembic/env.py lisent tous deux DATABASE_URL.
+      DATABASE_URL: postgresql+psycopg://kamas:kamas@postgres:5432/kamas
+      # Clé d'ingestion attendue du collector (X-Ingest-Key). Vide = ouvert (dev).
+      KAMAS_INGEST_KEY: ${KAMAS_INGEST_KEY:-}
+      # Phase 4 — API publique. auth activée : X-API-Key exigée (scopes read/owner).
+      # Créer les clés : docker compose exec api python scripts/manage_keys.py create ...
+      KAMAS_REQUIRE_AUTH: ${KAMAS_REQUIRE_AUTH:-1}
+      KAMAS_CORS_ORIGINS: ${KAMAS_CORS_ORIGINS:-*}
+      KAMAS_RATE_LIMIT: ${KAMAS_RATE_LIMIT:-120}
+      KAMAS_RATE_WINDOW: ${KAMAS_RATE_WINDOW:-60}
+    volumes:
+      # SQLite source (seed initial du Postgres au 1er démarrage) + icônes, en RO :
+      # l'API n'écrit JAMAIS ce fichier, elle écrit dans Postgres.
+      - ./data:/app/data:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  front:
+    build:
+      context: .
+      dockerfile: services/front/Dockerfile
+    ports:
+      - "8200:8200"
+    environment:
+      KAMAS_API_URL: http://api:8100
+      # Clé owner du front (lecture + écritures), tenue côté serveur, jamais
+      # exposée au navigateur. À renseigner si KAMAS_REQUIRE_AUTH=1.
+      KAMAS_API_KEY: ${KAMAS_FRONT_API_KEY:-}
+    volumes:
+      - ./data:/app/data:ro       # icônes seulement — le front ne touche jamais la DB
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:

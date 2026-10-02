@@ -1,0 +1,21 @@
+# Dépendances pour lancer le site en local (Price API + Front + sync du
+# catalogue + tests). Chaque service a aussi son propre requirements.txt,
+# utilisé par son image Docker (cf. services/api, services/front).
+
+requests==2.34.2          # sync du catalogue DofusDB (src/sync)
+
+# Price API
+fastapi==0.139.2
+uvicorn==0.51.0
+pydantic>=2,<3
+python-multipart==0.0.32  # parsing des formulaires (endpoints d'écriture)
+sqlalchemy==2.0.52
+alembic==1.19.1
+psycopg[binary]==3.2.3    # driver Postgres ; inutile pour la SQLite de dev
+
+# Front
+Jinja2==3.1.6
+httpx>=0.27,<0.29
+
+# Tests
+pytest==9.1.1
